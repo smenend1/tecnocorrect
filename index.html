@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TecnoCorrect v1.2</title>
+    <title>TecnoCorrect v1.3</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -11,21 +11,21 @@
 <body>
     <div class="container">
         <header>
-            <h1>TecnoCorrect v1.2</h1>
+            <h1>TecnoCorrect v1.3</h1>
             <p>Corrector de Tecnologia ESO</p>
         </header>
 
         <section class="card">
-            <label style="color: #007bff;">0. Referències del Professor</label>
+            <label style="color: #007bff; font-weight: bold;">0. Referències del Professor</label>
             
-            <label>Examen Original (Net/Enunciats):</label>
+            <label>Examen Original (Enunciats):</label>
             <input type="file" id="masterBlank" accept="image/*,.pdf">
             
             <label>Solucionari (Respostes):</label>
             <input type="file" id="masterSolution" accept="image/*,.pdf">
 
-            <label>Instruccions extra:</label>
-            <input type="text" id="customInstructions" placeholder="Ex: Sigues flexible amb el dibuix.">
+            <label>Instruccions extra (Opcional):</label>
+            <input type="text" id="customInstructions" placeholder="Ex: Penalitza molt les faltes d'ortografia.">
         </section>
 
         <section class="card">
@@ -33,12 +33,14 @@
             <input type="file" id="csvFile" accept=".csv">
             
             <label>2. Selecciona l'Alumne</label>
-            <select id="alumneSelect"><option>Puja el CSV...</option></select>
+            <select id="alumneSelect"><option>Puja primer el CSV...</option></select>
         </section>
 
         <section class="card">
-            <label>3. Fotos de l'examen de l'alumne</label>
-            <input type="file" id="examPhotos" multiple accept="image/*" capture="environment">
+            <label>3. Examen de l'alumne</label>
+            <p style="font-size: 0.75em; color: #666; margin-bottom: 10px;">Pots fer la foto ara o triar-la de la galeria.</p>
+            <input type="file" id="examPhotos" multiple accept="image/*">
+            
             <div id="preview"></div>
             <button id="btnCorrect" class="btn-main">Corregir amb IA</button>
         </section>
