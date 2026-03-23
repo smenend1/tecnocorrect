@@ -5,41 +5,22 @@ const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
-let examenNetPages = [];
-let solucionariPages = [];
-
-// Intentem carregar de memòria immediatament
-try {
-    examenNetPages = JSON.parse(localStorage.getItem('masterBlankArray')) || [];
-    solucionariPages = JSON.parse(localStorage.getItem('masterSolutionArray')) || [];
-} catch(e) {
-    console.error("Error carregant memòria local", e);
-}
+let examenNetPages = JSON.parse(localStorage.getItem('masterBlankArray')) || [];
+let solucionariPages = JSON.parse(localStorage.getItem('masterSolutionArray')) || [];
 
 function log(m) {
     const d = document.getElementById('debugLog');
     if (d) { d.innerHTML += `<br>> ${m}`; d.scrollTop = d.scrollHeight; }
 }
 
-// --- FORÇAR EL BOTÓ D'ESBORRAR ---
-// Fem que s'assigni tan aviat com el script es carregui
-const setupButtons = () => {
-    const btnClear = document.getElementById('btnClearMemory');
-    if (btnClear) {
-        btnClear.onclick = function(e) {
-            e.preventDefault();
-            localStorage.clear();
-            examenNetPages = [];
-            solucionariPages = [];
-            log("🗑️ MEMÒRIA NETEJADA.");
-            alert("S'han esborrat tots els fitxers guardats.");
-            location.reload(); // Recarreguem la pàgina per netejar-ho tot
-        };
-    }
+// BOTÓ ESBORRAR
+document.getElementById('btnClearMemory').onclick = function() {
+    localStorage.clear();
+    log("🗑️ Memòria neta. Recarregant...");
+    setTimeout(() => location.reload(), 500);
 };
-setTimeout(setupButtons, 500); // Donem mig segon perquè el HTML estigui llest
 
-// COMPRESSOR ULTRA-AGRESSIU (Reducció total per evitar el bloqueig)
+// COMPRESSOR ESTÀNDARD
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -49,15 +30,11 @@ async function optimitzarImatge(file) {
             img.src = e.target.result;
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 600; // Reduïm encara més (600px és suficient per a text)
-                let scale = MAX_WIDTH / img.width;
-                if (scale > 1) scale = 1;
-                canvas.width = img.width * scale;
-                canvas.height = img.height * scale;
+                canvas.width = 800; 
+                canvas.height = (img.height * 800) / img.width;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                // Qualitat 0.3 (Molt lleuger)
-                resolve(canvas.toDataURL('image/jpeg', 0.3).split(',')[1]);
+                resolve(canvas.toDataURL('image/jpeg', 0.5).split(',')[1]);
             };
         };
     });
@@ -71,85 +48,92 @@ document.getElementById('csvFile').onchange = function(e) {
         const select = document.getElementById('alumneSelect');
         select.innerHTML = ''; dadesClasse = [];
         lines.forEach(line => {
-            let nomNet = line.trim().replace(/^"|"$/g, '');
-            if(nomNet) {
-                dadesClasse.push({ nom: nomNet, nota: 0, feedback: '' });
+            let nom = line.trim().replace(/^"|"$/g, '');
+            if(nom) {
+                dadesClasse.push({ nom: nom, nota: 0, feedback: '' });
                 let opt = document.createElement('option');
-                opt.value = nomNet; opt.text = nomNet;
+                opt.value = nom; opt.text = nom;
                 select.appendChild(opt);
             }
         });
-        log(`📊 Carregats ${dadesClasse.length} alumnes.`);
+        log(`📊 ${dadesClasse.length} alumnes a punt.`);
     };
     reader.readAsText(e.target.files[0]);
 };
 
 // 2. PROFESSOR
 document.getElementById('masterBlank').onchange = async (e) => {
-    log("Processant enunciats...");
     examenNetPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
     localStorage.setItem('masterBlankArray', JSON.stringify(examenNetPages));
-    log(`✅ ${examenNetPages.length} pàgines guardades.`);
+    log("✅ Examen guardat.");
 };
 
 document.getElementById('masterSolution').onchange = async (e) => {
-    log("Processant solucionari...");
     solucionariPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
     localStorage.setItem('masterSolutionArray', JSON.stringify(solucionariPages));
-    log(`✅ ${solucionariPages.length} pàgines guardades.`);
+    log("✅ Solucionari guardat.");
 };
 
-// 3. ALUMNE
+// 3. FOTOS ALUMNE
 document.getElementById('examPhotos').onchange = (e) => {
-    log(`${e.target.files.length} fotos de l'alumne triades.`);
+    log(`${e.target.files.length} fotos alumne seleccionades.`);
 };
 
-// 4. CORRECCIÓ
+// 4. CORRECCIÓ (MINIMALISTA)
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
 
-    if (!examenNetPages.length || !solucionariPages.length) return alert("Puja primer l'examen i el solucionari.");
-    if (!files.length) return alert("Selecciona fotos de l'alumne.");
-
+    if (!examenNetPages.length || !solucionariPages.length) return alert("Puja referències.");
+    
     const btn = document.getElementById('btnCorrect');
-    btn.innerText = "⏳ Corregint..."; btn.disabled = true;
-    log(`🚀 Enviant a l'IA: ${alumne}`);
+    btn.innerText = "⏳..."; btn.disabled = true;
+    log(`🚀 Corregint ${alumne}...`);
 
     try {
-        const fotosAlumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
+        const alumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
         
-        let payloadParts = [{ text: `Ets un professor. Corregeix l'examen de "${alumne}". Respon NOMÉS JSON: {"nota": X.X, "feedback": "..."}` }];
+        // CONSTRUCCIÓ DEL COS DE LA PETICIÓ (Simplificat al màxim)
+        const payload = {
+            contents: [{
+                parts: [
+                    { text: `Corregeix l'examen de l'alumne "${alumne}". Compara enunciats i solucionari amb les fotos de l'alumne. Respon només JSON: {"nota":0, "feedback":""}` },
+                    { inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } },
+                    { inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } },
+                    ...alumneB64.map(img => ({ inline_data: { mime_type: "image/jpeg", data: img } }))
+                ]
+            }]
+        };
 
-        // Només enviem la PRIMERA pàgina de cada per estalviar espai si n'hi ha moltes
-        payloadParts.push({ inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } });
-        payloadParts.push({ inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } });
-        
-        // Afegim les fotos de l'alumne
-        fotosAlumneB64.forEach(d => payloadParts.push({ inline_data: { mime_type: "image/jpeg", data: d } }));
-
-        const resp = await fetch(GEMINI_URL, {
+        const response = await fetch(GEMINI_URL, {
             method: 'POST',
-            body: JSON.stringify({ contents: [{ parts: payloadParts }] })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
-        
-        const data = await resp.json();
 
-        if (data.candidates && data.candidates[0]) {
-            let rawText = data.candidates[0].content.parts[0].text;
-            let cleanJSON = rawText.replace(/```json|```/g, "").trim();
-            const res = JSON.parse(cleanJSON);
+        const result = await response.json();
+
+        // LOG PER VEURE L'ERROR REAL SI NO HI HA RESPOSTA
+        if (result.error) {
+            log(`❌ ERROR GOOGLE: ${result.error.message} (Codi: ${result.error.code})`);
+            return;
+        }
+
+        if (result.candidates && result.candidates[0]) {
+            let text = result.candidates[0].content.parts[0].text;
+            let clean = text.replace(/```json|```/g, "").trim();
+            const json = JSON.parse(clean);
             
-            const i = dadesClasse.findIndex(a => a.nom === alumne);
-            if (i !== -1) { dadesClasse[i].nota = res.nota; dadesClasse[i].feedback = res.feedback; }
+            const idx = dadesClasse.findIndex(a => a.nom === alumne);
+            if (idx !== -1) { dadesClasse[idx].nota = json.nota; dadesClasse[idx].feedback = json.feedback; }
             
-            log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
-            alert(`Corregit: ${res.nota}`);
+            log(`✅ NOTA: ${json.nota}`);
+            alert(`Alumne: ${alumne}\nNota: ${json.nota}`);
         } else {
-            log("❌ Error: Resposta buida de Google.");
+            log("❌ Resposta buida. Revisa la Clau API.");
         }
     } catch (err) {
-        log(`❌ Error: ${err.message}`);
+        log(`❌ ERROR: ${err.message}`);
     } finally {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
@@ -159,5 +143,5 @@ document.getElementById('btnExport').onclick = () => {
     const ws = XLSX.utils.json_to_sheet(dadesClasse);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Notes");
-    XLSX.writeFile(wb, "Notes_Tecno.xlsx");
+    XLSX.writeFile(wb, "Notes.xlsx");
 };
