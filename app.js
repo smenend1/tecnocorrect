@@ -1,6 +1,9 @@
-// CONFIGURACIÓ
+// ==========================================
+// CONFIGURACIÓ - POSA LA TEVA CLAU AQUÍ
+// ==========================================
 const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo"; 
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+// Canviem a gemini-1.5-flash-latest per evitar l'error de "model not found"
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
 let examenNetPages = JSON.parse(localStorage.getItem('masterBlankArray')) || [];
@@ -11,14 +14,14 @@ const log = (m) => {
     if (d) { d.innerHTML += `<br>> ${m}`; d.scrollTop = d.scrollHeight; }
 };
 
-// BOTÓ ESBORRAR (Recarrega per netejar-ho tot)
+// BOTÓ ESBORRAR
 document.getElementById('btnClearMemory').onclick = () => {
     localStorage.clear();
-    alert("Memòria neta. La pàgina es recarregarà.");
+    alert("Memòria neta. Recarregant...");
     location.reload();
 };
 
-// COMPRESSOR (700px / Qualitat 0.4)
+// COMPRESSOR EFICIENT
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -28,17 +31,18 @@ async function optimitzarImatge(file) {
             img.src = e.target.result;
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                canvas.width = 700;
-                canvas.height = (img.height * 700) / img.width;
+                const MAX_W = 800;
+                canvas.width = MAX_W; 
+                canvas.height = (img.height * MAX_W) / img.width;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL('image/jpeg', 0.4).split(',')[1]);
+                resolve(canvas.toDataURL('image/jpeg', 0.5).split(',')[1]);
             };
         };
     });
 }
 
-// 1. CSV
+// 1. LECTURA CSV
 document.getElementById('csvFile').onchange = (e) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -54,7 +58,7 @@ document.getElementById('csvFile').onchange = (e) => {
                 select.appendChild(opt);
             }
         });
-        log(`📊 Carregats ${dadesClasse.length} alumnes.`);
+        log(`📊 ${dadesClasse.length} alumnes carregats.`);
     };
     reader.readAsText(e.target.files[0]);
 };
@@ -74,19 +78,20 @@ document.getElementById('masterSolution').onchange = async (e) => {
     log("✅ Solucionari guardat.");
 };
 
-// 3. FOTOS ALUMNE
-document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos llestes.`);
+// 3. ALUMNE
+document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos alumne llistes.`);
 
-// 4. CORRECCIÓ (V3 - SENSE ERRORS GENÈRICS)
+// 4. CORRECCIÓ (V2.4 - MODEL CORREGIT)
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
 
     if (!examenNetPages.length || !solucionariPages.length) return alert("Puja referències al Pas 0.");
-    
+    if (!files.length) return alert("Tria fotos de l'alumne.");
+
     const btn = document.getElementById('btnCorrect');
-    btn.innerText = "⏳..."; btn.disabled = true;
-    log(`🚀 Cridant a Google per a ${alumne}...`);
+    btn.innerText = "⏳ Corregint..."; btn.disabled = true;
+    log(`🚀 Connectant amb Gemini per a ${alumne}...`);
 
     try {
         const alumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
@@ -94,7 +99,7 @@ document.getElementById('btnCorrect').onclick = async () => {
         const payload = {
             contents: [{
                 parts: [
-                    { text: `Corregeix l'examen de "${alumne}". Respon NOMÉS JSON: {"nota":0, "feedback":""}` },
+                    { text: `Ets un professor de tecnologia. Corregeix l'examen de "${alumne}". Compara enunciats i solucionari amb les fotos de l'alumne. Respon EXCLUSIVAMENT JSON pur: {"nota": X.X, "feedback": "..."}` },
                     { inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } },
                     { inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } },
                     ...alumneB64.map(img => ({ inline_data: { mime_type: "image/jpeg", data: img } }))
@@ -111,23 +116,25 @@ document.getElementById('btnCorrect').onclick = async () => {
         const result = await response.json();
 
         if (result.error) {
-            log(`❌ ERROR API: ${result.error.message}`);
+            log(`❌ ERROR GOOGLE: ${result.error.message}`);
         } else if (result.candidates && result.candidates[0]) {
-            let raw = result.candidates[0].content.parts[0].text;
-            let clean = raw.replace(/```json|```/g, "").trim();
-            const res = JSON.parse(clean);
+            let rawText = result.candidates[0].content.parts[0].text;
+            let cleanJSON = rawText.replace(/```json|```/g, "").trim();
+            const res = JSON.parse(cleanJSON);
             
             const i = dadesClasse.findIndex(a => a.nom === alumne);
-            if (i !== -1) { dadesClasse[i].nota = res.nota; dadesClasse[i].feedback = res.feedback; }
+            if (i !== -1) {
+                dadesClasse[i].nota = res.nota;
+                dadesClasse[i].feedback = res.feedback;
+            }
             
-            log(`✅ NOTA: ${res.nota}`);
-            alert(`Nota: ${res.nota}`);
+            log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
+            alert(`Corregit!\nNota: ${res.nota}`);
         } else {
-            log("❌ Google ha tornat una resposta buida.");
-            console.log(result);
+            log("❌ Resposta buida. Revisa les fotos.");
         }
     } catch (err) {
-        log(`❌ Error de codi: ${err.message}`);
+        log(`❌ Error: ${err.message}`);
     } finally {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
