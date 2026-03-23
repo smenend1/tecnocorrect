@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TecnoCorrect PWA</title>
+    <title>TecnoCorrect v1.2</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -11,15 +11,21 @@
 <body>
     <div class="container">
         <header>
-            <h1>TecnoCorrect v1.1</h1>
+            <h1>TecnoCorrect v1.2</h1>
             <p>Corrector de Tecnologia ESO</p>
         </header>
 
         <section class="card">
-            <label>0. Solucionari de Referència (PDF o Foto)</label>
+            <label style="color: #007bff;">0. Referències del Professor</label>
+            
+            <label>Examen Original (Net/Enunciats):</label>
+            <input type="file" id="masterBlank" accept="image/*,.pdf">
+            
+            <label>Solucionari (Respostes):</label>
             <input type="file" id="masterSolution" accept="image/*,.pdf">
-            <label>Instruccions específiques (opcional):</label>
-            <input type="text" id="customInstructions" placeholder="Ex: Sigues estricte amb les unitats de resistència.">
+
+            <label>Instruccions extra:</label>
+            <input type="text" id="customInstructions" placeholder="Ex: Sigues flexible amb el dibuix.">
         </section>
 
         <section class="card">
@@ -27,16 +33,13 @@
             <input type="file" id="csvFile" accept=".csv">
             
             <label>2. Selecciona l'Alumne</label>
-            <select id="alumneSelect">
-                <option>Puja primer el CSV...</option>
-            </select>
+            <select id="alumneSelect"><option>Puja el CSV...</option></select>
         </section>
 
         <section class="card">
             <label>3. Fotos de l'examen de l'alumne</label>
             <input type="file" id="examPhotos" multiple accept="image/*" capture="environment">
             <div id="preview"></div>
-            
             <button id="btnCorrect" class="btn-main">Corregir amb IA</button>
         </section>
 
@@ -44,12 +47,6 @@
             <button id="btnExport" class="btn-sec">Exportar Excel Master</button>
         </section>
     </div>
-
     <script src="app.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
-        }
-    </script>
 </body>
 </html>
