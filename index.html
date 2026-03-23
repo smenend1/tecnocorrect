@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TecnoCorrect v1.4</title>
+    <title>TecnoCorrect v1.7</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -11,48 +11,44 @@
 <body>
     <div class="container">
         <header>
-            <h1>TecnoCorrect v1.4</h1>
-            <p>Corrector de Tecnologia ESO</p>
+            <h1>TecnoCorrect v1.7</h1>
+            <p>Corrector Multipàgina ESO</p>
         </header>
 
         <section class="card">
-            <label style="color: #007bff; font-weight: bold;">0. Referències del Professor</label>
+            <label style="color: #007bff; font-weight: bold;">0. Referències del Professor (Multipàgina)</label>
             <label>Examen Original (Enunciats):</label>
-            <input type="file" id="masterBlank" accept="image/*,.pdf">
+            <input type="file" id="masterBlank" multiple accept="image/*">
             <label>Solucionari (Respostes):</label>
-            <input type="file" id="masterSolution" accept="image/*,.pdf">
-            <label>Instruccions extra (Opcional):</label>
+            <input type="file" id="masterSolution" multiple accept="image/*">
+            <label>Instruccions extra:</label>
             <input type="text" id="customInstructions" placeholder="Ex: Sigues estricte amb les unitats.">
+            <button id="btnClearMemory" style="background:#ff4d4d; color:white; margin-top:10px; border:none; padding:5px; border-radius:4px; cursor:pointer;">Esborrar Examen de la Memòria</button>
         </section>
 
         <section class="card">
             <label>1. Llista d'Alumnes (CSV)</label>
             <input type="file" id="csvFile" accept=".csv">
             <label>2. Selecciona l'Alumne</label>
-            <select id="alumneSelect"><option>Esperant CSV...</option></select>
+            <select id="alumneSelect"><option>Carrega el CSV...</option></select>
         </section>
 
         <section class="card">
-            <label>3. Examen de l'alumne</label>
+            <label>3. Examen de l'alumne (Fotos)</label>
             <input type="file" id="examPhotos" multiple accept="image/*">
             <div id="preview"></div>
             <button id="btnCorrect" class="btn-main">Corregir amb IA</button>
         </section>
 
-        <section class="card" style="background: #1e1e1e; color: #32ff32; font-family: monospace; font-size: 0.75em; border-radius: 8px;">
-            <label style="color: #00ff00; margin-bottom: 5px;">Terminal de Depuració:</label>
-            <div id="debugLog" style="height: 100px; overflow-y: auto; padding: 5px;">Sistema a punt...</div>
+        <section class="card" style="background: #1e1e1e; color: #32ff32; font-family: monospace; font-size: 0.8em; border-radius: 8px;">
+            <label style="color: #00ff00;">Terminal de Depuració:</label>
+            <div id="debugLog" style="height: 120px; overflow-y: auto; padding: 5px;">Sistema a punt...</div>
         </section>
 
         <section class="card">
-            <button id="btnExport" class="btn-sec">Exportar Excel Master</button>
+            <button id="btnExport" class="btn-sec">Exportar Excel de Notes</button>
         </section>
     </div>
     <script src="app.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
-        }
-    </script>
 </body>
 </html>
