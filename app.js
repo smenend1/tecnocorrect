@@ -1,7 +1,7 @@
 // ==========================================
 // CONFIGURACIÓ INICIAL - POSA LA TEVA CLAU AQUÍ
 // ==========================================
-const API_KEY = "LA_TEVA_CLAU_API_AQUÍ"; 
+const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo"; 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
