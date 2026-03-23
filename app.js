@@ -1,3 +1,6 @@
+// ==========================================
+// CONFIGURACIÓ - POSA LA TEVA CLAU AQUÍ
+// ==========================================
 const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo"; 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
@@ -11,44 +14,40 @@ function log(m) {
         d.innerHTML += `<br>> ${m}`;
         d.scrollTop = d.scrollHeight;
     }
+    console.log(m);
 }
 
-// Funció per optimitzar imatges. 
-// NOTA: Si puges un PDF, Gemini Flash podria fallar si no es converteix abans.
-// Recomanació: Puja captures de pantalla (imatges) dels PDF.
+// 1. COMPRESSOR D'IMATGES (Crucial per evitar errors de connexió)
 async function optimitzarImatge(file) {
-    return new Promise((resolve, reject) => {
-        if (file.type === "application/pdf") {
-            log("⚠️ Atenció: Has pujat un PDF. Si falla, prova de pujar una foto o captura de l'examen.");
-        }
+    return new Promise((resolve) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
         reader.onload = (e) => {
-            if (file.type.startsWith('image/')) {
+            if (file.type === "application/pdf") {
+                // Si és PDF, l'enviem tal qual (Base64)
+                resolve(e.target.result.split(',')[1]);
+            } else {
+                // Si és imatge, la reduïm de mida
                 const img = new Image();
                 img.src = e.target.result;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 1000; 
+                    const MAX_WIDTH = 1024; // Mida òptima per a OCR
                     let scale = MAX_WIDTH / img.width;
                     if (scale > 1) scale = 1;
                     canvas.width = img.width * scale;
                     canvas.height = img.height * scale;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    // Qualitat 0.6 per assegurar que el pes total no superi els límits
                     resolve(canvas.toDataURL('image/jpeg', 0.6).split(',')[1]);
                 };
-            } else {
-                // Si és PDF, l'enviem tal qual (Gemini 1.5 pot processar PDFs, però el format de l'API canvia)
-                // Per seguretat en aquest codi, extraiem el base64
-                resolve(e.target.result.split(',')[1]);
             }
         };
-        reader.onerror = reject;
     });
 }
 
-// 1. LECTURA DEL CSV
+// 2. LECTORA DE CSV (Gestiona noms amb comes i espais)
 document.getElementById('csvFile').addEventListener('change', function(e) {
     const reader = new FileReader();
     reader.onload = function(event) {
@@ -64,17 +63,17 @@ document.getElementById('csvFile').addEventListener('change', function(e) {
                 select.appendChild(opt);
             }
         });
-        log(`Carregats ${dadesClasse.length} alumnes.`);
+        log(`📊 Carregats ${dadesClasse.length} alumnes.`);
     };
     reader.readAsText(e.target.files[0]);
 });
 
-// 2. CÀRREGA DELS FITXERS DEL PROFESSOR
+// 3. CÀRREGA DE FITXERS DEL PROFESSOR
 document.getElementById('masterBlank').onchange = async (e) => {
     if (e.target.files[0]) {
         examenNetBase64 = await optimitzarImatge(e.target.files[0]);
         localStorage.setItem('masterBlank', examenNetBase64);
-        log("✅ Examen net carregat.");
+        log("✅ Examen net preparat.");
     }
 };
 
@@ -82,66 +81,22 @@ document.getElementById('masterSolution').onchange = async (e) => {
     if (e.target.files[0]) {
         solucionariBase64 = await optimitzarImatge(e.target.files[0]);
         localStorage.setItem('masterSolution', solucionariBase64);
-        log("✅ Solucionari carregat.");
+        log("✅ Solucionari preparat.");
     }
 };
 
-// 3. CORRECCIÓ
-document.getElementById('btnCorrect').onclick = async () => {
-    const alumne = document.getElementById('alumneSelect').value;
-    const files = document.getElementById('examPhotos').files;
-
-    if (!examenNetBase64 || !solucionariBase64) {
-        log("❌ Falten fitxers del professor. Torna'ls a pujar.");
-        return alert("Puja primer els fitxers del professor.");
-    }
-    
-    const btn = document.getElementById('btnCorrect');
-    btn.innerText = "Processant..."; btn.disabled = true;
-    log(`Corregint: ${alumne}`);
-
-    try {
-        const fotosB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
-        
-        // Ajustem el MIME type segons si és PDF o imatge
-        const getMime = (data) => data.startsWith('JVBER') ? 'application/pdf' : 'image/jpeg';
-
-        const payload = {
-            contents: [{
-                parts: [
-                    { text: `Ets un professor de tecnologia. Corregeix l'examen de l'alumne "${alumne}". Respon NOMÉS JSON: {"nota": X.X, "feedback": "...", "manual": boolean}` },
-                    { inline_data: { mime_type: getMime(examenNetBase64), data: examenNetBase64 } },
-                    { inline_data: { mime_type: getMime(solucionariBase64), data: solucionariBase64 } },
-                    ...fotosB64.map(b => ({ inline_data: { mime_type: 'image/jpeg', data: b } }))
-                ]
-            }]
-        };
-
-        const resp = await fetch(GEMINI_URL, { method: 'POST', body: JSON.stringify(payload) });
-        const data = await resp.json();
-
-        if (data.candidates && data.candidates[0]) {
-            let rawText = data.candidates[0].content.parts[0].text;
-            let cleanJSON = rawText.replace(/```json|```/g, "").trim();
-            const res = JSON.parse(cleanJSON);
-            actualitzarDades(alumne, res);
-            log(`Èxit: ${alumne} -> ${res.nota}`);
-            alert(`Corregit: ${res.nota}`);
-        } else {
-            log("❌ Error: La IA no ha respost. Revisa la clau API.");
-        }
-    } catch (err) {
-        log(`❌ Error: ${err.message}`);
-    } finally {
-        btn.innerText = "Corregir amb IA"; btn.disabled = false;
-    }
+// 4. PREVISUALITZACIÓ FOTOS ALUMNE
+document.getElementById('examPhotos').onchange = (e) => {
+    const p = document.getElementById('preview');
+    p.innerHTML = '';
+    log(`${e.target.files.length} fotos de l'alumne seleccionades.`);
+    Array.from(e.target.files).forEach(f => {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(f);
+        img.style = "width:50px; height:50px; object-fit:cover; margin:5px; border-radius:4px;";
+        p.appendChild(img);
+    });
 };
 
-function actualitzarDades(nom, res) {
-    const i = dadesClasse.findIndex(a => a.nom === nom);
-    if (i !== -1) {
-        dadesClasse[i].nota = res.nota;
-        dadesClasse[i].feedback = res.feedback;
-        dadesClasse[i].manual = res.manual ? "SÍ" : "NO";
-    }
-}
+// 5. MOTOR DE CORRECCIÓ (Amb Gestió de PDF i Imatge)
+document.getElementById('btnCorrect
