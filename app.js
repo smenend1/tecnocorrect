@@ -5,23 +5,26 @@ const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
-// Ara guardem ARRAYS de pàgines
+// Recuperem les pàgines guardades (si n'hi ha)
 let examenNetPages = JSON.parse(localStorage.getItem('masterBlankArray')) || [];
 let solucionariPages = JSON.parse(localStorage.getItem('masterSolutionArray')) || [];
 
 function log(m) {
     const d = document.getElementById('debugLog');
-    if (d) { d.innerHTML += `<br>> ${m}`; d.scrollTop = d.scrollHeight; }
+    if (d) {
+        d.innerHTML += `<br>> ${m}`;
+        d.scrollTop = d.scrollHeight;
+    }
     console.log(m);
 }
 
-// Al carregar, informem de què hi ha a la memòria
+// Missatge inicial segons memòria
 window.onload = () => {
-    if (examenNetPages.length) log(`✅ Recuperades ${examenNetPages.length} pàgines d'examen.`);
-    if (solucionariPages.length) log(`✅ Recuperades ${solucionariPages.length} pàgines de solucionari.`);
+    if (examenNetPages.length) log(`✅ Memòria: ${examenNetPages.length} pàgines d'examen a punt.`);
+    if (solucionariPages.length) log(`✅ Memòria: ${solucionariPages.length} pàgines de solucionari a punt.`);
 };
 
-// COMPRESSOR D'IMATGES (Millorat per a moltes fotos)
+// COMPRESSOR D'IMATGES (Redueix fotos de 10MB per no saturar l'API)
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -38,14 +41,15 @@ async function optimitzarImatge(file) {
                 canvas.height = img.height * scale;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                resolve(canvas.toDataURL('image/jpeg', 0.5).split(',')[1]); // Qualitat 0.5 per estalviar espai
+                // Comprimim al 50% per poder enviar moltes pàgines alhora
+                resolve(canvas.toDataURL('image/jpeg', 0.5).split(',')[1]);
             };
         };
     });
 }
 
 // 1. LECTURA DEL CSV
-document.getElementById('csvFile').onchange = function(e) {
+document.getElementById('csvFile').addEventListener('change', function(e) {
     const reader = new FileReader();
     reader.onload = function(event) {
         const lines = event.target.result.split(/\r?\n/).filter(l => l.trim() !== "");
@@ -63,34 +67,52 @@ document.getElementById('csvFile').onchange = function(e) {
         log(`📊 Carregats ${dadesClasse.length} alumnes.`);
     };
     reader.readAsText(e.target.files[0]);
-};
+});
 
-// 2. CÀRREGA MULTIPÀGINA DEL PROFESSOR
+// 2. CÀRREGA MULTIPÀGINA DEL PROFESSOR (Es guarda al LocalStorage)
 document.getElementById('masterBlank').onchange = async (e) => {
-    log("Processant pàgines de l'examen...");
+    log("Comprimint pàgines de l'examen...");
     examenNetPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
     localStorage.setItem('masterBlankArray', JSON.stringify(examenNetPages));
-    log(`✅ ${examenNetPages.length} pàgines d'examen guardades.`);
+    log(`✅ ${examenNetPages.length} pàgines d'examen desades.`);
 };
 
 document.getElementById('masterSolution').onchange = async (e) => {
-    log("Processant pàgines del solucionari...");
+    log("Comprimint pàgines del solucionari...");
     solucionariPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
     localStorage.setItem('masterSolutionArray', JSON.stringify(solucionariPages));
-    log(`✅ ${solucionariPages.length} pàgines de solucionari guardades.`);
+    log(`✅ ${solucionariPages.length} pàgines de solucionari desades.`);
+};
+
+document.getElementById('btnClearMemory').onclick = () => {
+    localStorage.removeItem('masterBlankArray');
+    localStorage.removeItem('masterSolutionArray');
+    examenNetPages = [];
+    solucionariPages = [];
+    log("🗑️ Memòria esborrada. Puja nous fitxers.");
+    alert("Memòria neta.");
 };
 
 // 3. FOTOS DE L'ALUMNE
 document.getElementById('examPhotos').onchange = (e) => {
-    log(`${e.target.files.length} fotos de l'alumne seleccionades.`);
+    const p = document.getElementById('preview');
+    p.innerHTML = '';
+    log(`${e.target.files.length} fotos de l'alumne preparades.`);
+    Array.from(e.target.files).forEach(f => {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(f);
+        img.style = "width:40px; height:40px; object-fit:cover; margin:2px; border-radius:4px;";
+        p.appendChild(img);
+    });
 };
 
-// 4. CORRECCIÓ FINAL
+// 4. MOTOR DE CORRECCIÓ
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
+    const extra = document.getElementById('customInstructions').value;
 
-    if (!examenNetPages.length || !solucionariPages.length) return alert("❌ Falten fitxers del professor.");
+    if (!examenNetPages.length || !solucionariPages.length) return alert("❌ Puja primer els fitxers del professor.");
     if (!files.length) return alert("❌ Selecciona les fotos de l'alumne.");
 
     const btn = document.getElementById('btnCorrect');
@@ -100,19 +122,28 @@ document.getElementById('btnCorrect').onclick = async () => {
     try {
         const fotosAlumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
         
-        // Creem les "parts" per a la IA: Instruccions + Totes les imatges
-        let parts = [{ text: `Ets un professor de tecnologia d'ESO. Corregeix l'examen de "${alumne}". T'adjunto: 1. Les pàgines en blanc (enunciats), 2. El solucionari, 3. Les fotos de l'alumne. Respon EXCLUSIVAMENT en format JSON: {"nota": X.X, "feedback": "...", "manual": false}` }];
-        
-        // Afegim pàgines d'examen net
-        examenNetPages.forEach(data => parts.push({ inline_data: { mime_type: "image/jpeg", data } }));
-        // Afegim pàgines de solucionari
-        solucionariPages.forEach(data => parts.push({ inline_data: { mime_type: "image/jpeg", data } }));
-        // Afegim fotos de l'alumne
-        fotosAlumneB64.forEach(data => parts.push({ inline_data: { mime_type: "image/jpeg", data } }));
+        // Preparem les parts del missatge (Instruccions + Totes les imatges)
+        let payloadParts = [
+            { text: `Ets un professor de tecnologia d'ESO. Corregeix l'examen de "${alumne}".
+            T'adjunto: 
+            1. Pàgines de l'examen net (enunciats).
+            2. Pàgines del solucionari (respostes correctes).
+            3. Fotos de l'examen fet per l'alumne.
+            
+            Normes: Resta 0.25 si falten unitats. Rangs: 0-4.7 NA, 4.71-6.8 AS, 6.81-8.8 AN, 8.81-10 AE.
+            Instrucció extra: ${extra}
+            
+            Respon EXCLUSIVAMENT en format JSON: {"nota": X.X, "feedback": "...", "manual": boolean}` }
+        ];
 
-        const resp = await fetch(GEMINI_URL, { 
-            method: 'POST', 
-            body: JSON.stringify({ contents: [{ parts }] }) 
+        // Afegim tot el material gràfic al payload
+        examenNetPages.forEach(data => payloadParts.push({ inline_data: { mime_type: "image/jpeg", data } }));
+        solucionariPages.forEach(data => payloadParts.push({ inline_data: { mime_type: "image/jpeg", data } }));
+        fotosAlumneB64.forEach(data => payloadParts.push({ inline_data: { mime_type: "image/jpeg", data } }));
+
+        const resp = await fetch(GEMINI_URL, {
+            method: 'POST',
+            body: JSON.stringify({ contents: [{ parts: payloadParts }] })
         });
         
         const data = await resp.json();
@@ -126,7 +157,7 @@ document.getElementById('btnCorrect').onclick = async () => {
             log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
             alert(`Corregit: ${res.nota}`);
         } else {
-            log("❌ La IA no ha pogut processar tantes imatges. Prova de pujar només les pàgines més importants.");
+            log("❌ La IA no ha respost. Massa imatges? Prova de reduir el número de pàgines.");
         }
     } catch (err) {
         log(`❌ Error: ${err.message}`);
@@ -150,6 +181,7 @@ function actualitzarDades(nom, res) {
 }
 
 document.getElementById('btnExport').onclick = () => {
+    if (dadesClasse.length === 0) return alert("No hi ha dades.");
     const ws = XLSX.utils.json_to_sheet(dadesClasse);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Notes");
