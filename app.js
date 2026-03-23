@@ -3,7 +3,7 @@
 // ==========================================
 const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo"; 
 
-// CANVI CRÍTIC: Passem de v1beta a v1 (versió estable)
+// URL ESTÀNDARD V1 (Més compatible que la v1beta)
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
@@ -18,11 +18,11 @@ const log = (m) => {
 // BOTÓ ESBORRAR
 document.getElementById('btnClearMemory').onclick = () => {
     localStorage.clear();
-    alert("Memòria neta. La pàgina es recarregarà.");
+    alert("Memòria neta. Recarregant...");
     location.reload();
 };
 
-// COMPRESSOR (800px / Qualitat 0.5)
+// COMPRESSOR 
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -80,19 +80,18 @@ document.getElementById('masterSolution').onchange = async (e) => {
 };
 
 // 3. FOTOS ALUMNE
-document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos seleccionades.`);
+document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos a punt.`);
 
-// 4. CORRECCIÓ (V2.7 - VERSIÓ ESTABLE)
+// 4. CORRECCIÓ
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
 
-    if (!examenNetPages.length || !solucionariPages.length) return alert("Puja referències al Pas 0.");
-    if (!files.length) return alert("Tria fotos de l'alumne.");
-
+    if (!examenNetPages.length || !solucionariPages.length) return alert("Falten referències.");
+    
     const btn = document.getElementById('btnCorrect');
     btn.innerText = "⏳..."; btn.disabled = true;
-    log(`🚀 Connectant amb Gemini v1 (Estable)...`);
+    log(`🚀 Provant connexió V1 amb ${alumne}...`);
 
     try {
         const alumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
@@ -100,7 +99,7 @@ document.getElementById('btnCorrect').onclick = async () => {
         const payload = {
             contents: [{
                 parts: [
-                    { text: `Corregeix l'examen de "${alumne}". Respon NOMÉS JSON: {"nota": X.X, "feedback": "..."}` },
+                    { text: `Corregeix l'examen de "${alumne}". Respon només JSON: {"nota": X, "feedback": "..."}` },
                     { inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } },
                     { inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } },
                     ...alumneB64.map(img => ({ inline_data: { mime_type: "image/jpeg", data: img } }))
@@ -118,6 +117,7 @@ document.getElementById('btnCorrect').onclick = async () => {
 
         if (result.error) {
             log(`❌ ERROR GOOGLE: ${result.error.message}`);
+            // Si el v1 també falla, ens dirà per què
         } else if (result.candidates && result.candidates[0]) {
             let rawText = result.candidates[0].content.parts[0].text;
             let start = rawText.indexOf('{');
@@ -126,17 +126,15 @@ document.getElementById('btnCorrect').onclick = async () => {
             const res = JSON.parse(cleanJSON);
             
             const i = dadesClasse.findIndex(a => a.nom === alumne);
-            if (i !== -1) {
-                dadesClasse[i].nota = res.nota;
-                dadesClasse[i].feedback = res.feedback;
-            }
-            log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
-            alert(`Nota: ${res.nota}`);
+            if (i !== -1) { dadesClasse[i].nota = res.nota; dadesClasse[i].feedback = res.feedback; }
+            
+            log(`✅ NOTA: ${res.nota}`);
+            alert(`Alumne: ${alumne}\nNota: ${res.nota}`);
         } else {
-            log("❌ Resposta buida. Prova amb una altra foto.");
+            log("❌ Resposta inesperada.");
         }
     } catch (err) {
-        log(`❌ Error: ${err.message}`);
+        log(`❌ Error crític: ${err.message}`);
     } finally {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
