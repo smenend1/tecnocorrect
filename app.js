@@ -1,6 +1,5 @@
 let dadesClasse = [];
-const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo
-"; 
+const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo"; 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let examenNetBase64 = null;
@@ -8,16 +7,20 @@ let solucionariBase64 = null;
 
 // Lectura de fitxers mestres
 document.getElementById('masterBlank').addEventListener('change', async (e) => {
-    examenNetBase64 = await toBase64(e.target.files[0]);
-    alert("✅ Examen net carregat.");
+    if(e.target.files[0]) {
+        examenNetBase64 = await toBase64(e.target.files[0]);
+        alert("✅ Examen net a punt.");
+    }
 });
 
 document.getElementById('masterSolution').addEventListener('change', async (e) => {
-    solucionariBase64 = await toBase64(e.target.files[0]);
-    alert("✅ Solucionari carregat.");
+    if(e.target.files[0]) {
+        solucionariBase64 = await toBase64(e.target.files[0]);
+        alert("✅ Solucionari a punt.");
+    }
 });
 
-// Lectura CSV Alumnes
+// Lectura CSV
 document.getElementById('csvFile').addEventListener('change', function(e) {
     const reader = new FileReader();
     reader.onload = function(event) {
@@ -33,59 +36,52 @@ document.getElementById('csvFile').addEventListener('change', function(e) {
                 select.appendChild(opt);
             }
         });
-        alert("📊 Llista d'alumnes a punt.");
+        alert("📊 Alumnes carregats.");
     };
     reader.readAsText(e.target.files[0]);
 });
 
-// Previsualització fotos alumne
+// Previsualització
 document.getElementById('examPhotos').addEventListener('change', function(e) {
     const preview = document.getElementById('preview');
     preview.innerHTML = '';
     Array.from(e.target.files).forEach(file => {
         const img = document.createElement('img');
         img.src = URL.createObjectURL(file);
-        img.style.width = "60px"; img.style.margin = "5px";
+        img.style.width = "60px"; img.style.height = "60px"; 
+        img.style.objectFit = "cover"; img.style.margin = "5px";
+        img.style.borderRadius = "5px";
         preview.appendChild(img);
     });
 });
 
-// Funció de Correcció
+// Correcció
 document.getElementById('btnCorrect').addEventListener('click', async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
     const extra = document.getElementById('customInstructions').value;
 
-    if (!examenNetBase64 || !solucionariBase64) return alert("❌ Puja l'examen net i el solucionari.");
-    if (!files.length) return alert("❌ Fes les fotos de l'alumne.");
+    if (!examenNetBase64 || !solucionariBase64) return alert("❌ Falten els fitxers mestres (Pas 0).");
+    if (!files.length) return alert("❌ Selecciona o fes fotos de l'examen.");
 
     const btn = document.getElementById('btnCorrect');
-    btn.innerText = "Analitzant..."; btn.disabled = true;
+    btn.innerText = "IA Treballant..."; btn.disabled = true;
 
     try {
         const fotosAlumneB64 = await Promise.all(Array.from(files).map(file => toBase64(file)));
         
-        const prompt = `
-            CONTEXT: Ets un professor de tecnologia d'ESO.
-            REFERÈNCIES:
-            1. Examen Net: L'enunciat original (imatge adjunta).
-            2. Solucionari: Les respostes correctes (imatge adjunta).
-            TASCA: Corregeix l'examen de "${alumne}".
-            NORMES: 
-            - Resta 0.25 si falten unitats.
-            - Valora el procediment segons l'enunciat.
-            - Rangs: 0-4.7 NA, 4.71-6.8 AS, 6.81-8.8 AN, 8.81-10 AE.
-            - Si hi ha dibuixos/esquemes, marca "manual": true.
-            - Instrucció extra: ${extra}
-            RETORNA JSON: {"nota": numero, "feedback": "frase català", "manual": boolean}
-        `;
-
         const response = await fetch(GEMINI_URL, {
             method: 'POST',
             body: JSON.stringify({
                 contents: [{
                     parts: [
-                        { text: prompt },
+                        { text: `Ets un professor de tecnologia d'ESO. Corregeix l'examen de ${alumne}. 
+                        Usa l'EXAMEN NET i el SOLUCIONARI adjunts. 
+                        Resta 0.25 per falta d'unitats. 
+                        Rangs: 0-4.7 NA, 4.71-6.8 AS, 6.81-8.8 AN, 8.81-10 AE.
+                        Si hi ha esquemes o dibuixos, marca "manual": true.
+                        Instrucció extra: ${extra}
+                        Respon NOMÉS JSON: {"nota": X, "feedback": "...", "manual": boolean}` },
                         { inline_data: { mime_type: "image/jpeg", data: examenNetBase64 } },
                         { inline_data: { mime_type: "image/jpeg", data: solucionariBase64 } },
                         ...fotosAlumneB64.map(b => ({ inline_data: { mime_type: "image/jpeg", data: b } }))
@@ -101,7 +97,7 @@ document.getElementById('btnCorrect').addEventListener('click', async () => {
         alert(`✅ ${alumne}: ${res.nota} (${calcularQual(res.nota)})`);
 
     } catch (err) {
-        alert("⚠️ Error: Revisa la clau API o la foto.");
+        alert("⚠️ Error en la correcció.");
     } finally {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
@@ -130,6 +126,6 @@ function actualitzarLocal(nom, res) {
 document.getElementById('btnExport').onclick = () => {
     const ws = XLSX.utils.json_to_sheet(dadesClasse);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Notes");
-    XLSX.writeFile(wb, "Notes_Tecno.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Notes Tecnologia");
+    XLSX.writeFile(wb, "Notes_Tecno_ESO.xlsx");
 };
