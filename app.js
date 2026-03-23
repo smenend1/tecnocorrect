@@ -2,8 +2,10 @@
 // CONFIGURACIÓ - POSA LA TEVA CLAU AQUÍ
 // ==========================================
 const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo"; 
-// URL CORREGIDA: Utilitzem gemini-1.5-flash (nom estàndard)
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+
+// CANVI CLAU: Utilitzem el nom de model més compatible per a v1beta
+const MODEL_NAME = "gemini-1.5-flash"; 
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
 let examenNetPages = JSON.parse(localStorage.getItem('masterBlankArray')) || [];
@@ -21,7 +23,7 @@ document.getElementById('btnClearMemory').onclick = () => {
     location.reload();
 };
 
-// COMPRESSOR EFICIENT
+// COMPRESSOR
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -42,7 +44,7 @@ async function optimitzarImatge(file) {
     });
 }
 
-// 1. LECTURA CSV
+// 1. CSV
 document.getElementById('csvFile').onchange = (e) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -91,7 +93,7 @@ document.getElementById('btnCorrect').onclick = async () => {
 
     const btn = document.getElementById('btnCorrect');
     btn.innerText = "⏳ Corregint..."; btn.disabled = true;
-    log(`🚀 Connectant amb Gemini per a ${alumne}...`);
+    log(`🚀 Provant amb el model ${MODEL_NAME}...`);
 
     try {
         const alumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
@@ -99,7 +101,7 @@ document.getElementById('btnCorrect').onclick = async () => {
         const payload = {
             contents: [{
                 parts: [
-                    { text: `Ets un professor de tecnologia. Corregeix l'examen de "${alumne}". Compara enunciats i solucionari amb les fotos de l'alumne. Respon EXCLUSIVAMENT JSON pur: {"nota": X.X, "feedback": "..."}` },
+                    { text: `Corregeix l'examen de "${alumne}". Respon NOMÉS JSON pur: {"nota": X.X, "feedback": "..."}` },
                     { inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } },
                     { inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } },
                     ...alumneB64.map(img => ({ inline_data: { mime_type: "image/jpeg", data: img } }))
@@ -116,23 +118,23 @@ document.getElementById('btnCorrect').onclick = async () => {
         const result = await response.json();
 
         if (result.error) {
-            log(`❌ ERROR GOOGLE: ${result.error.message}`);
-        } else if (result.candidates && result.candidates[0]) {
-            let rawText = result.candidates[0].content.parts[0].text;
-            // Neteja per si la IA torna text fora del JSON
-            let cleanJSON = rawText.substring(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1);
-            const res = JSON.parse(cleanJSON);
+            // SI FALLA, PROVEM AMB EL NOM ALTERNATIU (LATEST) AUTOMÀTICAMENT
+            log(`⚠️ Error amb ${MODEL_NAME}. Provant model 'latest'...`);
+            const retryURL = GEMINI_URL.replace(MODEL_NAME, "gemini-1.5-flash-latest");
+            const retryResponse = await fetch(retryURL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const retryResult = await retryResponse.json();
             
-            const i = dadesClasse.findIndex(a => a.nom === alumne);
-            if (i !== -1) {
-                dadesClasse[i].nota = res.nota;
-                dadesClasse[i].feedback = res.feedback;
+            if (retryResult.error) {
+                log(`❌ ERROR FINAL: ${retryResult.error.message}`);
+                return;
             }
-            
-            log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
-            alert(`Corregit!\nNota: ${res.nota}`);
+            processarResposta(retryResult, alumne);
         } else {
-            log("❌ Resposta buida de l'IA.");
+            processarResposta(result, alumne);
         }
     } catch (err) {
         log(`❌ Error: ${err.message}`);
@@ -140,6 +142,24 @@ document.getElementById('btnCorrect').onclick = async () => {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
 };
+
+function processarResposta(result, alumne) {
+    if (result.candidates && result.candidates[0]) {
+        let rawText = result.candidates[0].content.parts[0].text;
+        let start = rawText.indexOf('{');
+        let end = rawText.lastIndexOf('}') + 1;
+        let cleanJSON = rawText.substring(start, end);
+        const res = JSON.parse(cleanJSON);
+        
+        const i = dadesClasse.findIndex(a => a.nom === alumne);
+        if (i !== -1) {
+            dadesClasse[i].nota = res.nota;
+            dadesClasse[i].feedback = res.feedback;
+        }
+        log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
+        alert(`Nota: ${res.nota}`);
+    }
+}
 
 document.getElementById('btnExport').onclick = () => {
     const ws = XLSX.utils.json_to_sheet(dadesClasse);
