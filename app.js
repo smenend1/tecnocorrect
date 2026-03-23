@@ -5,50 +5,47 @@ const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
-let examenNetBase64 = localStorage.getItem('masterBlank') || null;
-let solucionariBase64 = localStorage.getItem('masterSolution') || null;
+// Ara guardem ARRAYS de pàgines
+let examenNetPages = JSON.parse(localStorage.getItem('masterBlankArray')) || [];
+let solucionariPages = JSON.parse(localStorage.getItem('masterSolutionArray')) || [];
 
 function log(m) {
     const d = document.getElementById('debugLog');
-    if (d) {
-        d.innerHTML += `<br>> ${m}`;
-        d.scrollTop = d.scrollHeight;
-    }
+    if (d) { d.innerHTML += `<br>> ${m}`; d.scrollTop = d.scrollHeight; }
     console.log(m);
 }
 
-// 1. COMPRESSOR D'IMATGES (Crucial per evitar errors de connexió)
+// Al carregar, informem de què hi ha a la memòria
+window.onload = () => {
+    if (examenNetPages.length) log(`✅ Recuperades ${examenNetPages.length} pàgines d'examen.`);
+    if (solucionariPages.length) log(`✅ Recuperades ${solucionariPages.length} pàgines de solucionari.`);
+};
+
+// COMPRESSOR D'IMATGES (Millorat per a moltes fotos)
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
         reader.onload = (e) => {
-            if (file.type === "application/pdf") {
-                // Si és PDF, l'enviem tal qual (Base64)
-                resolve(e.target.result.split(',')[1]);
-            } else {
-                // Si és imatge, la reduïm de mida
-                const img = new Image();
-                img.src = e.target.result;
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 1024; // Mida òptima per a OCR
-                    let scale = MAX_WIDTH / img.width;
-                    if (scale > 1) scale = 1;
-                    canvas.width = img.width * scale;
-                    canvas.height = img.height * scale;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    // Qualitat 0.6 per assegurar que el pes total no superi els límits
-                    resolve(canvas.toDataURL('image/jpeg', 0.6).split(',')[1]);
-                };
-            }
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 1000; 
+                let scale = MAX_WIDTH / img.width;
+                if (scale > 1) scale = 1;
+                canvas.width = img.width * scale;
+                canvas.height = img.height * scale;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/jpeg', 0.5).split(',')[1]); // Qualitat 0.5 per estalviar espai
+            };
         };
     });
 }
 
-// 2. LECTORA DE CSV (Gestiona noms amb comes i espais)
-document.getElementById('csvFile').addEventListener('change', function(e) {
+// 1. LECTURA DEL CSV
+document.getElementById('csvFile').onchange = function(e) {
     const reader = new FileReader();
     reader.onload = function(event) {
         const lines = event.target.result.split(/\r?\n/).filter(l => l.trim() !== "");
@@ -66,37 +63,95 @@ document.getElementById('csvFile').addEventListener('change', function(e) {
         log(`📊 Carregats ${dadesClasse.length} alumnes.`);
     };
     reader.readAsText(e.target.files[0]);
-});
+};
 
-// 3. CÀRREGA DE FITXERS DEL PROFESSOR
+// 2. CÀRREGA MULTIPÀGINA DEL PROFESSOR
 document.getElementById('masterBlank').onchange = async (e) => {
-    if (e.target.files[0]) {
-        examenNetBase64 = await optimitzarImatge(e.target.files[0]);
-        localStorage.setItem('masterBlank', examenNetBase64);
-        log("✅ Examen net preparat.");
-    }
+    log("Processant pàgines de l'examen...");
+    examenNetPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
+    localStorage.setItem('masterBlankArray', JSON.stringify(examenNetPages));
+    log(`✅ ${examenNetPages.length} pàgines d'examen guardades.`);
 };
 
 document.getElementById('masterSolution').onchange = async (e) => {
-    if (e.target.files[0]) {
-        solucionariBase64 = await optimitzarImatge(e.target.files[0]);
-        localStorage.setItem('masterSolution', solucionariBase64);
-        log("✅ Solucionari preparat.");
+    log("Processant pàgines del solucionari...");
+    solucionariPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
+    localStorage.setItem('masterSolutionArray', JSON.stringify(solucionariPages));
+    log(`✅ ${solucionariPages.length} pàgines de solucionari guardades.`);
+};
+
+// 3. FOTOS DE L'ALUMNE
+document.getElementById('examPhotos').onchange = (e) => {
+    log(`${e.target.files.length} fotos de l'alumne seleccionades.`);
+};
+
+// 4. CORRECCIÓ FINAL
+document.getElementById('btnCorrect').onclick = async () => {
+    const alumne = document.getElementById('alumneSelect').value;
+    const files = document.getElementById('examPhotos').files;
+
+    if (!examenNetPages.length || !solucionariPages.length) return alert("❌ Falten fitxers del professor.");
+    if (!files.length) return alert("❌ Selecciona les fotos de l'alumne.");
+
+    const btn = document.getElementById('btnCorrect');
+    btn.innerText = "IA Treballant..."; btn.disabled = true;
+    log(`🚀 Corregint: ${alumne}...`);
+
+    try {
+        const fotosAlumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
+        
+        // Creem les "parts" per a la IA: Instruccions + Totes les imatges
+        let parts = [{ text: `Ets un professor de tecnologia d'ESO. Corregeix l'examen de "${alumne}". T'adjunto: 1. Les pàgines en blanc (enunciats), 2. El solucionari, 3. Les fotos de l'alumne. Respon EXCLUSIVAMENT en format JSON: {"nota": X.X, "feedback": "...", "manual": false}` }];
+        
+        // Afegim pàgines d'examen net
+        examenNetPages.forEach(data => parts.push({ inline_data: { mime_type: "image/jpeg", data } }));
+        // Afegim pàgines de solucionari
+        solucionariPages.forEach(data => parts.push({ inline_data: { mime_type: "image/jpeg", data } }));
+        // Afegim fotos de l'alumne
+        fotosAlumneB64.forEach(data => parts.push({ inline_data: { mime_type: "image/jpeg", data } }));
+
+        const resp = await fetch(GEMINI_URL, { 
+            method: 'POST', 
+            body: JSON.stringify({ contents: [{ parts }] }) 
+        });
+        
+        const data = await resp.json();
+
+        if (data.candidates && data.candidates[0]) {
+            let rawText = data.candidates[0].content.parts[0].text;
+            let cleanJSON = rawText.replace(/```json|```/g, "").trim();
+            const res = JSON.parse(cleanJSON);
+            
+            actualitzarDades(alumne, res);
+            log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
+            alert(`Corregit: ${res.nota}`);
+        } else {
+            log("❌ La IA no ha pogut processar tantes imatges. Prova de pujar només les pàgines més importants.");
+        }
+    } catch (err) {
+        log(`❌ Error: ${err.message}`);
+    } finally {
+        btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
 };
 
-// 4. PREVISUALITZACIÓ FOTOS ALUMNE
-document.getElementById('examPhotos').onchange = (e) => {
-    const p = document.getElementById('preview');
-    p.innerHTML = '';
-    log(`${e.target.files.length} fotos de l'alumne seleccionades.`);
-    Array.from(e.target.files).forEach(f => {
-        const img = document.createElement('img');
-        img.src = URL.createObjectURL(f);
-        img.style = "width:50px; height:50px; object-fit:cover; margin:5px; border-radius:4px;";
-        p.appendChild(img);
-    });
-};
+function actualitzarDades(nom, res) {
+    const i = dadesClasse.findIndex(a => a.nom === nom);
+    if (i !== -1) {
+        dadesClasse[i].nota = res.nota;
+        dadesClasse[i].feedback = res.feedback;
+        dadesClasse[i].manual = res.manual ? "SÍ" : "NO";
+        const n = res.nota;
+        if (n <= 4.7) dadesClasse[i].qual = "NA";
+        else if (n <= 6.8) dadesClasse[i].qual = "AS";
+        else if (n <= 8.8) dadesClasse[i].qual = "AN";
+        else dadesClasse[i].qual = "AE";
+    }
+}
 
-// 5. MOTOR DE CORRECCIÓ (Amb Gestió de PDF i Imatge)
-document.getElementById('btnCorrect
+document.getElementById('btnExport').onclick = () => {
+    const ws = XLSX.utils.json_to_sheet(dadesClasse);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Notes");
+    XLSX.writeFile(wb, "Notes_Tecno.xlsx");
+};
