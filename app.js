@@ -16,7 +16,36 @@ function log(m) {
     }
 }
 
-// 1. LECTURA DEL CSV (Més robust per a Cognoms, Nom)
+// --- FUNCIÓ CRÍTICA: COMPRESSOR D'IMATGES ---
+// Redueix fotos de 10MB a uns 500KB per evitar errors de l'API
+async function optimitzarImatge(file) {
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (e) => {
+            const img = new Image();
+            img.src = e.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 1200; // Suficient per llegir text clarament
+                let scale = MAX_WIDTH / img.width;
+                if (scale > 1) scale = 1;
+                
+                canvas.width = img.width * scale;
+                canvas.height = img.height * scale;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // Convertim a JPEG amb qualitat 0.7 (redueix mida un 90%)
+                const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+                resolve(base64);
+            };
+        };
+    });
+}
+
+// 1. LECTURA DEL CSV
 document.getElementById('csvFile').addEventListener('change', function(e) {
     const reader = new FileReader();
     reader.onload = function(event) {
@@ -37,51 +66,25 @@ document.getElementById('csvFile').addEventListener('change', function(e) {
     reader.readAsText(e.target.files[0]);
 });
 
-// 2. REDUCCIÓ DE MIDA D'IMATGE (Per evitar errors de memòria)
-async function resizeImage(file) {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const MAX_WIDTH = 1200; // Mida suficient per a OCR però lleugera
-                let width = img.width;
-                let height = img.height;
-                if (width > MAX_WIDTH) {
-                    height *= MAX_WIDTH / width;
-                    width = MAX_WIDTH;
-                }
-                canvas.width = width; canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                resolve(canvas.toDataURL('image/jpeg', 0.7).split(',')[1]);
-            };
-        };
-    });
-}
-
-// Càrrega de fitxers mestres
+// 2. CÀRREGA I OPTIMITZACIÓ DE MESTRES
 document.getElementById('masterBlank').onchange = async (e) => {
     if (e.target.files[0]) {
-        examenNetBase64 = await resizeImage(e.target.files[0]);
-        log("Examen net carregat i optimitzat.");
+        examenNetBase64 = await optimitzarImatge(e.target.files[0]);
+        log("Examen net optimitzat.");
     }
 };
 
 document.getElementById('masterSolution').onchange = async (e) => {
     if (e.target.files[0]) {
-        solucionariBase64 = await resizeImage(e.target.files[0]);
-        log("Solucionari carregat i optimitzat.");
+        solucionariBase64 = await optimitzarImatge(e.target.files[0]);
+        log("Solucionari optimitzat.");
     }
 };
 
 document.getElementById('examPhotos').onchange = (e) => {
-    log(`${e.target.files.length} fotos seleccionades.`);
     const p = document.getElementById('preview');
     p.innerHTML = '';
+    log(`${e.target.files.length} fotos seleccionades.`);
     Array.from(e.target.files).forEach(f => {
         const img = document.createElement('img');
         img.src = URL.createObjectURL(f);
@@ -90,29 +93,26 @@ document.getElementById('examPhotos').onchange = (e) => {
     });
 };
 
-// 3. CORRECCIÓ AMB IA (AMB FILTRES RELAXATS)
+// 3. CORRECCIÓ AMB PROTECCIÓ D'ERRORS
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
-    const extra = document.getElementById('customInstructions').value;
 
-    if (!examenNetBase64 || !solucionariBase64) return alert("Puja primer els fitxers del professor.");
-    if (!files.length) return alert("Selecciona les fotos de l'alumne.");
+    if (!examenNetBase64 || !solucionariBase64) return alert("Falten fitxers del professor.");
+    if (!files.length) return alert("Selecciona fotos de l'alumne.");
 
     const btn = document.getElementById('btnCorrect');
     btn.innerText = "Processant..."; btn.disabled = true;
     log(`Iniciant correcció: ${alumne}`);
 
     try {
-        log("Optimitzant fotos de l'alumne...");
-        const fotosB64 = await Promise.all(Array.from(files).map(f => resizeImage(f)));
+        log("Comprimint fotos de l'alumne...");
+        const fotosB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
         
         const payload = {
             contents: [{
                 parts: [
-                    { text: `Ets un professor de tecnologia. Corregeix l'examen de "${alumne}" comparant-lo amb l'EXAMEN NET i el SOLUCIONARI. 
-                    Unitats incorrectes = -0.25. Rangs: 0-4.7 NA, 4.71-6.8 AS, 6.81-8.8 AN, 8.81-10 AE.
-                    Respon NOMÉS en JSON pur: {"nota": X.X, "feedback": "...", "manual": boolean}` },
+                    { text: `Ets un professor de tecnologia. Corregeix l'examen de "${alumne}" usant l'EXAMEN NET i el SOLUCIONARI. Respon NOMÉS JSON: {"nota": X.X, "feedback": "...", "manual": boolean}` },
                     { inline_data: { mime_type: "image/jpeg", data: examenNetBase64 } },
                     { inline_data: { mime_type: "image/jpeg", data: solucionariBase64 } },
                     ...fotosB64.map(b => ({ inline_data: { mime_type: "image/jpeg", data: b } }))
@@ -129,11 +129,10 @@ document.getElementById('btnCorrect').onclick = async () => {
         const resp = await fetch(GEMINI_URL, { method: 'POST', body: JSON.stringify(payload) });
         const data = await resp.json();
 
-        if (data.error) throw new Error(data.error.message);
-        
-        // Verificació de seguretat de la resposta
+        // VALIDACIÓ DE SEGURETAT
         if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-            log("AVÍS: La IA ha bloquejat la resposta per motius de seguretat. Intenta amb una foto més clara.");
+            log("ERROR: La IA ha retornat una resposta buida o bloquejada.");
+            if (data.error) log(`Motiu: ${data.error.message}`);
             return;
         }
 
@@ -146,7 +145,7 @@ document.getElementById('btnCorrect').onclick = async () => {
         alert(`Corregit: ${res.nota}`);
 
     } catch (err) {
-        log(`ERROR: ${err.message}`);
+        log(`ERROR CRÍTIC: ${err.message}`);
     } finally {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
