@@ -3,7 +3,7 @@
 // ==========================================
 const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo"; 
 
-// URL ESTÀNDARD V1 (Més compatible que la v1beta)
+// PASSEM A LA VERSIÓ ESTABLE v1 (Més robusta)
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
@@ -18,11 +18,11 @@ const log = (m) => {
 // BOTÓ ESBORRAR
 document.getElementById('btnClearMemory').onclick = () => {
     localStorage.clear();
-    alert("Memòria neta. Recarregant...");
+    alert("Memòria neta. La pàgina es recarregarà.");
     location.reload();
 };
 
-// COMPRESSOR 
+// COMPRESSOR (Optimitzat per a v1)
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -37,13 +37,14 @@ async function optimitzarImatge(file) {
                 canvas.height = (img.height * MAX_W) / img.width;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                // Qualitat 0.5 per mantenir detalls de l'examen
                 resolve(canvas.toDataURL('image/jpeg', 0.5).split(',')[1]);
             };
         };
     });
 }
 
-// 1. CSV
+// 1. LECTURA CSV
 document.getElementById('csvFile').onchange = (e) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -59,7 +60,7 @@ document.getElementById('csvFile').onchange = (e) => {
                 select.appendChild(opt);
             }
         });
-        log(`📊 ${dadesClasse.length} alumnes carregats.`);
+        log(`📊 ${dadesClasse.length} alumnes a punt.`);
     };
     reader.readAsText(e.target.files[0]);
 };
@@ -80,18 +81,18 @@ document.getElementById('masterSolution').onchange = async (e) => {
 };
 
 // 3. FOTOS ALUMNE
-document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos a punt.`);
+document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos llestes.`);
 
-// 4. CORRECCIÓ
+// 4. CORRECCIÓ (NETA I SENSE INTENTS FALLITS)
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
 
-    if (!examenNetPages.length || !solucionariPages.length) return alert("Falten referències.");
+    if (!examenNetPages.length || !solucionariPages.length) return alert("Falten referències (Pas 0).");
     
     const btn = document.getElementById('btnCorrect');
-    btn.innerText = "⏳..."; btn.disabled = true;
-    log(`🚀 Provant connexió V1 amb ${alumne}...`);
+    btn.innerText = "⏳ Corregint..."; btn.disabled = true;
+    log(`🚀 Enviant a Gemini v1: ${alumne}`);
 
     try {
         const alumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
@@ -99,7 +100,7 @@ document.getElementById('btnCorrect').onclick = async () => {
         const payload = {
             contents: [{
                 parts: [
-                    { text: `Corregeix l'examen de "${alumne}". Respon només JSON: {"nota": X, "feedback": "..."}` },
+                    { text: `Ets un professor. Corregeix l'examen de "${alumne}" comparant-lo amb l'examen net i el solucionari. Respon només JSON: {"nota": X.X, "feedback": "..."}` },
                     { inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } },
                     { inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } },
                     ...alumneB64.map(img => ({ inline_data: { mime_type: "image/jpeg", data: img } }))
@@ -117,7 +118,7 @@ document.getElementById('btnCorrect').onclick = async () => {
 
         if (result.error) {
             log(`❌ ERROR GOOGLE: ${result.error.message}`);
-            // Si el v1 també falla, ens dirà per què
+            if (result.error.message.includes("API key")) log("👉 Revisa la teva API KEY.");
         } else if (result.candidates && result.candidates[0]) {
             let rawText = result.candidates[0].content.parts[0].text;
             let start = rawText.indexOf('{');
@@ -129,12 +130,12 @@ document.getElementById('btnCorrect').onclick = async () => {
             if (i !== -1) { dadesClasse[i].nota = res.nota; dadesClasse[i].feedback = res.feedback; }
             
             log(`✅ NOTA: ${res.nota}`);
-            alert(`Alumne: ${alumne}\nNota: ${res.nota}`);
+            alert(`Corregit: ${res.nota}`);
         } else {
-            log("❌ Resposta inesperada.");
+            log("❌ Resposta buida. Google podria estar bloquejant la imatge per seguretat.");
         }
     } catch (err) {
-        log(`❌ Error crític: ${err.message}`);
+        log(`❌ Error de codi: ${err.message}`);
     } finally {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
