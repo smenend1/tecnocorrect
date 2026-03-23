@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TecnoCorrect v1.3</title>
+    <title>TecnoCorrect v1.4</title>
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -11,38 +11,37 @@
 <body>
     <div class="container">
         <header>
-            <h1>TecnoCorrect v1.3</h1>
+            <h1>TecnoCorrect v1.4</h1>
             <p>Corrector de Tecnologia ESO</p>
         </header>
 
         <section class="card">
             <label style="color: #007bff; font-weight: bold;">0. Referències del Professor</label>
-            
             <label>Examen Original (Enunciats):</label>
             <input type="file" id="masterBlank" accept="image/*,.pdf">
-            
             <label>Solucionari (Respostes):</label>
             <input type="file" id="masterSolution" accept="image/*,.pdf">
-
             <label>Instruccions extra (Opcional):</label>
-            <input type="text" id="customInstructions" placeholder="Ex: Penalitza molt les faltes d'ortografia.">
+            <input type="text" id="customInstructions" placeholder="Ex: Sigues estricte amb les unitats.">
         </section>
 
         <section class="card">
             <label>1. Llista d'Alumnes (CSV)</label>
             <input type="file" id="csvFile" accept=".csv">
-            
             <label>2. Selecciona l'Alumne</label>
-            <select id="alumneSelect"><option>Puja primer el CSV...</option></select>
+            <select id="alumneSelect"><option>Esperant CSV...</option></select>
         </section>
 
         <section class="card">
             <label>3. Examen de l'alumne</label>
-            <p style="font-size: 0.75em; color: #666; margin-bottom: 10px;">Pots fer la foto ara o triar-la de la galeria.</p>
             <input type="file" id="examPhotos" multiple accept="image/*">
-            
             <div id="preview"></div>
             <button id="btnCorrect" class="btn-main">Corregir amb IA</button>
+        </section>
+
+        <section class="card" style="background: #1e1e1e; color: #32ff32; font-family: monospace; font-size: 0.75em; border-radius: 8px;">
+            <label style="color: #00ff00; margin-bottom: 5px;">Terminal de Depuració:</label>
+            <div id="debugLog" style="height: 100px; overflow-y: auto; padding: 5px;">Sistema a punt...</div>
         </section>
 
         <section class="card">
@@ -50,5 +49,10 @@
         </section>
     </div>
     <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
 </body>
 </html>
