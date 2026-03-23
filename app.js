@@ -1,131 +1,138 @@
 let dadesClasse = [];
-const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo"; 
+const API_KEY = "LA_TEVA_CLAU_API_AQUÍ"; 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let examenNetBase64 = null;
 let solucionariBase64 = null;
 
-// Lectura de fitxers mestres
-document.getElementById('masterBlank').addEventListener('change', async (e) => {
-    if(e.target.files[0]) {
-        examenNetBase64 = await toBase64(e.target.files[0]);
-        alert("✅ Examen net a punt.");
-    }
-});
+function log(m) {
+    const d = document.getElementById('debugLog');
+    d.innerHTML += `<br>> ${m}`;
+    d.scrollTop = d.scrollHeight;
+}
 
-document.getElementById('masterSolution').addEventListener('change', async (e) => {
-    if(e.target.files[0]) {
-        solucionariBase64 = await toBase64(e.target.files[0]);
-        alert("✅ Solucionari a punt.");
-    }
-});
-
-// Lectura CSV
+// 1. Lectura CSV (Format: Cognoms, Nom)
 document.getElementById('csvFile').addEventListener('change', function(e) {
     const reader = new FileReader();
     reader.onload = function(event) {
-        const lines = event.target.result.split('\n');
+        const text = event.target.result;
+        // Separem per línies i netegem espais
+        const lines = text.split(/\r?\n/).filter(line => line.trim() !== "");
         const select = document.getElementById('alumneSelect');
-        select.innerHTML = ''; dadesClasse = [];
+        select.innerHTML = '';
+        dadesClasse = [];
+
         lines.forEach(line => {
-            if(line.trim()) {
-                const nom = line.trim();
-                dadesClasse.push({ nom, nota: 0, qual: 'Pendent', feedback: '', manual: '' });
+            // Treiem cometes si n'hi ha (típic d'Excel)
+            let nomNet = line.trim().replace(/^"|"$/g, '');
+            if(nomNet) {
+                dadesClasse.push({ nom: nomNet, nota: 0, qual: 'Pendent', feedback: '', manual: 'OK' });
                 let opt = document.createElement('option');
-                opt.value = nom; opt.text = nom;
+                opt.value = nomNet; opt.text = nomNet;
                 select.appendChild(opt);
             }
         });
-        alert("📊 Alumnes carregats.");
+        log(`Carregats ${dadesClasse.length} alumnes.`);
     };
     reader.readAsText(e.target.files[0]);
 });
 
-// Previsualització
-document.getElementById('examPhotos').addEventListener('change', function(e) {
-    const preview = document.getElementById('preview');
-    preview.innerHTML = '';
-    Array.from(e.target.files).forEach(file => {
-        const img = document.createElement('img');
-        img.src = URL.createObjectURL(file);
-        img.style.width = "60px"; img.style.height = "60px"; 
-        img.style.objectFit = "cover"; img.style.margin = "5px";
-        img.style.borderRadius = "5px";
-        preview.appendChild(img);
-    });
-});
+// 2. Fitxers Mestres
+document.getElementById('masterBlank').onchange = async (e) => {
+    examenNetBase64 = await toBase64(e.target.files[0]);
+    log("Examen net carregat.");
+};
+document.getElementById('masterSolution').onchange = async (e) => {
+    solucionariBase64 = await toBase64(e.target.files[0]);
+    log("Solucionari carregat.");
+};
 
-// Correcció
-document.getElementById('btnCorrect').addEventListener('click', async () => {
+// 3. Previsualització
+document.getElementById('examPhotos').onchange = (e) => {
+    const p = document.getElementById('preview');
+    p.innerHTML = '';
+    Array.from(e.target.files).forEach(f => {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(f);
+        img.style = "width:50px; height:50px; object-fit:cover; margin:5px; border-radius:4px;";
+        p.appendChild(img);
+    });
+};
+
+// 4. Correcció amb IA
+document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
     const extra = document.getElementById('customInstructions').value;
 
-    if (!examenNetBase64 || !solucionariBase64) return alert("❌ Falten els fitxers mestres (Pas 0).");
-    if (!files.length) return alert("❌ Selecciona o fes fotos de l'examen.");
+    if (!examenNetBase64 || !solucionariBase64) return alert("Falten fitxers del professor.");
+    if (!files.length) return alert("Falten fotos de l'alumne.");
 
     const btn = document.getElementById('btnCorrect');
     btn.innerText = "IA Treballant..."; btn.disabled = true;
+    log(`Iniciant correcció: ${alumne}`);
 
     try {
-        const fotosAlumneB64 = await Promise.all(Array.from(files).map(file => toBase64(file)));
+        const fotosB64 = await Promise.all(Array.from(files).map(f => toBase64(f)));
         
-        const response = await fetch(GEMINI_URL, {
-            method: 'POST',
-            body: JSON.stringify({
-                contents: [{
-                    parts: [
-                        { text: `Ets un professor de tecnologia d'ESO. Corregeix l'examen de ${alumne}. 
-                        Usa l'EXAMEN NET i el SOLUCIONARI adjunts. 
-                        Resta 0.25 per falta d'unitats. 
-                        Rangs: 0-4.7 NA, 4.71-6.8 AS, 6.81-8.8 AN, 8.81-10 AE.
-                        Si hi ha esquemes o dibuixos, marca "manual": true.
-                        Instrucció extra: ${extra}
-                        Respon NOMÉS JSON: {"nota": X, "feedback": "...", "manual": boolean}` },
-                        { inline_data: { mime_type: "image/jpeg", data: examenNetBase64 } },
-                        { inline_data: { mime_type: "image/jpeg", data: solucionariBase64 } },
-                        ...fotosAlumneB64.map(b => ({ inline_data: { mime_type: "image/jpeg", data: b } }))
-                    ]
-                }]
-            })
-        });
+        const payload = {
+            contents: [{
+                parts: [
+                    { text: `Ets un professor de tecnologia. Corregeix l'examen de l'alumne "${alumne}". 
+                    Compara les fotos de l'alumne amb l'EXAMEN NET i el SOLUCIONARI adjunts.
+                    Resta 0.25 si falten unitats. 
+                    Rangs: 0-4.7 NA, 4.71-6.8 AS, 6.81-8.8 AN, 8.81-10 AE.
+                    Si hi ha dibuixos, respon "manual": true.
+                    Instrucció extra: ${extra}
+                    Respon NOMÉS JSON pur: {"nota": X.X, "feedback": "...", "manual": boolean}` },
+                    { inline_data: { mime_type: "image/jpeg", data: examenNetBase64 } },
+                    { inline_data: { mime_type: "image/jpeg", data: solucionariBase64 } },
+                    ...fotosB64.map(b => ({ inline_data: { mime_type: "image/jpeg", data: b } }))
+                ]
+            }]
+        };
 
-        const data = await response.json();
-        const res = JSON.parse(data.candidates[0].content.parts[0].text.replace(/```json|```/g, ""));
+        const resp = await fetch(GEMINI_URL, { method: 'POST', body: JSON.stringify(payload) });
+        const data = await resp.json();
+        
+        // Neteja del JSON per evitar errors de format
+        let rawText = data.candidates[0].content.parts[0].text;
+        let cleanJSON = rawText.replace(/```json|```/g, "").trim();
+        const res = JSON.parse(cleanJSON);
 
-        actualitzarLocal(alumne, res);
-        alert(`✅ ${alumne}: ${res.nota} (${calcularQual(res.nota)})`);
+        actualitzarDades(alumne, res);
+        log(`Èxit: ${alumne} -> ${res.nota}`);
+        alert(`Corregit: ${res.nota}`);
 
     } catch (err) {
-        alert("⚠️ Error en la correcció.");
+        log(`ERROR: ${err.message}`);
+        console.error(err);
     } finally {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
-});
+};
 
-const toBase64 = file => new Promise((res, rej) => {
-    const r = new FileReader(); r.readAsDataURL(file);
+const toBase64 = f => new Promise((res, rej) => {
+    const r = new FileReader(); r.readAsDataURL(f);
     r.onload = () => res(r.result.split(',')[1]); r.onerror = rej;
 });
 
-function calcularQual(n) {
-    if (n <= 4.7) return "NA"; if (n <= 6.8) return "AS";
-    if (n <= 8.8) return "AN"; return "AE";
-}
-
-function actualitzarLocal(nom, res) {
+function actualitzarDades(nom, res) {
     const i = dadesClasse.findIndex(a => a.nom === nom);
     if (i !== -1) {
         dadesClasse[i].nota = res.nota;
-        dadesClasse[i].qual = calcularQual(res.nota);
         dadesClasse[i].feedback = res.feedback;
-        dadesClasse[i].manual = res.manual ? "REVISAR DIBUIX" : "OK";
+        dadesClasse[i].manual = res.manual ? "REVISAR" : "OK";
+        if (res.nota <= 4.7) dadesClasse[i].qual = "NA";
+        else if (res.nota <= 6.8) dadesClasse[i].qual = "AS";
+        else if (res.nota <= 8.8) dadesClasse[i].qual = "AN";
+        else dadesClasse[i].qual = "AE";
     }
 }
 
 document.getElementById('btnExport').onclick = () => {
     const ws = XLSX.utils.json_to_sheet(dadesClasse);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Notes Tecnologia");
-    XLSX.writeFile(wb, "Notes_Tecno_ESO.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Notes");
+    XLSX.writeFile(wb, "Notes_Tecno.xlsx");
 };
