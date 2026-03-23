@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TecnoCorrect PWA</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>TecnoCorrect v1.0</h1>
+            <p>Corrector de Tecnologia ESO</p>
+        </header>
+
+        <section class="card">
+            <label>1. Llista d'Alumnes (CSV)</label>
+            <input type="file" id="csvFile" accept=".csv">
+            
+            <label>2. Alumne a corregir</label>
+            <select id="alumneSelect">
+                <option>Puja primer el CSV...</option>
+            </select>
+        </section>
+
+        <section class="card">
+            <label>3. Fotos de l'examen</label>
+            <input type="file" id="examPhotos" multiple accept="image/*" capture="environment">
+            <div id="preview"></div>
+            
+            <button id="btnCorrect" class="btn-main">Corregir amb IA</button>
+        </section>
+
+        <section class="card">
+            <button id="btnExport" class="btn-sec">Exportar Excel Master</button>
+        </section>
+    </div>
+    <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>
