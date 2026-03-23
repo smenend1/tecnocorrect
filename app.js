@@ -1,6 +1,4 @@
-// ==========================================
-// CONFIGURACIÓ - POSA LA TEVA CLAU AQUÍ
-// ==========================================
+// CONFIGURACIÓ
 const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo"; 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
@@ -8,19 +6,19 @@ let dadesClasse = [];
 let examenNetPages = JSON.parse(localStorage.getItem('masterBlankArray')) || [];
 let solucionariPages = JSON.parse(localStorage.getItem('masterSolutionArray')) || [];
 
-function log(m) {
+const log = (m) => {
     const d = document.getElementById('debugLog');
     if (d) { d.innerHTML += `<br>> ${m}`; d.scrollTop = d.scrollHeight; }
-}
-
-// BOTÓ ESBORRAR
-document.getElementById('btnClearMemory').onclick = function() {
-    localStorage.clear();
-    log("🗑️ Memòria esborrada. Recarregant...");
-    setTimeout(() => location.reload(), 500);
 };
 
-// COMPRESSOR - Mida fixa de 700px per a màxima seguretat de quota
+// BOTÓ ESBORRAR (Recarrega per netejar-ho tot)
+document.getElementById('btnClearMemory').onclick = () => {
+    localStorage.clear();
+    alert("Memòria neta. La pàgina es recarregarà.");
+    location.reload();
+};
+
+// COMPRESSOR (700px / Qualitat 0.4)
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -30,9 +28,8 @@ async function optimitzarImatge(file) {
             img.src = e.target.result;
             img.onload = () => {
                 const canvas = document.createElement('canvas');
-                const MAX_W = 700;
-                canvas.width = MAX_W; 
-                canvas.height = (img.height * MAX_W) / img.width;
+                canvas.width = 700;
+                canvas.height = (img.height * 700) / img.width;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 resolve(canvas.toDataURL('image/jpeg', 0.4).split(',')[1]);
@@ -41,10 +38,10 @@ async function optimitzarImatge(file) {
     });
 }
 
-// 1. LECTURA CSV
-document.getElementById('csvFile').onchange = function(e) {
+// 1. CSV
+document.getElementById('csvFile').onchange = (e) => {
     const reader = new FileReader();
-    reader.onload = function(event) {
+    reader.onload = (event) => {
         const lines = event.target.result.split(/\r?\n/).filter(l => l.trim() !== "");
         const select = document.getElementById('alumneSelect');
         select.innerHTML = ''; dadesClasse = [];
@@ -57,7 +54,7 @@ document.getElementById('csvFile').onchange = function(e) {
                 select.appendChild(opt);
             }
         });
-        log(`📊 ${dadesClasse.length} alumnes carregats.`);
+        log(`📊 Carregats ${dadesClasse.length} alumnes.`);
     };
     reader.readAsText(e.target.files[0]);
 };
@@ -77,21 +74,19 @@ document.getElementById('masterSolution').onchange = async (e) => {
     log("✅ Solucionari guardat.");
 };
 
-// 3. ALUMNE
-document.getElementById('examPhotos').onchange = (e) => {
-    log(`${e.target.files.length} fotos alumne seleccionades.`);
-};
+// 3. FOTOS ALUMNE
+document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos llestes.`);
 
-// 4. CORRECCIÓ (SENSE FILTRES DE SEGURETAT BLOQUEJANTS)
+// 4. CORRECCIÓ (V3 - SENSE ERRORS GENÈRICS)
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
 
-    if (!examenNetPages.length || !solucionariPages.length) return alert("Puja primer l'examen i el solucionari.");
+    if (!examenNetPages.length || !solucionariPages.length) return alert("Puja referències al Pas 0.");
     
     const btn = document.getElementById('btnCorrect');
-    btn.innerText = "⏳ Corregint..."; btn.disabled = true;
-    log(`🚀 Connectant amb Google per a ${alumne}...`);
+    btn.innerText = "⏳..."; btn.disabled = true;
+    log(`🚀 Cridant a Google per a ${alumne}...`);
 
     try {
         const alumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
@@ -99,18 +94,12 @@ document.getElementById('btnCorrect').onclick = async () => {
         const payload = {
             contents: [{
                 parts: [
-                    { text: `Ets un professor. Compara l'examen net i el solucionari amb les fotos de l'alumne "${alumne}". Respon NOMÉS aquest JSON: {"nota": 0.0, "feedback": ""}` },
+                    { text: `Corregeix l'examen de "${alumne}". Respon NOMÉS JSON: {"nota":0, "feedback":""}` },
                     { inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } },
                     { inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } },
                     ...alumneB64.map(img => ({ inline_data: { mime_type: "image/jpeg", data: img } }))
                 ]
-            }],
-            safetySettings: [
-                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-            ]
+            }]
         };
 
         const response = await fetch(GEMINI_URL, {
@@ -121,34 +110,24 @@ document.getElementById('btnCorrect').onclick = async () => {
 
         const result = await response.json();
 
-        // LOG PER VEURE L'ERROR REAL
         if (result.error) {
-            log(`❌ ERROR GOOGLE: ${result.error.message}`);
-            console.error(result.error);
-            return;
-        }
-
-        if (result.candidates && result.candidates[0] && result.candidates[0].content) {
-            let rawText = result.candidates[0].content.parts[0].text;
-            let cleanJSON = rawText.replace(/```json|```/g, "").trim();
-            const res = JSON.parse(cleanJSON);
+            log(`❌ ERROR API: ${result.error.message}`);
+        } else if (result.candidates && result.candidates[0]) {
+            let raw = result.candidates[0].content.parts[0].text;
+            let clean = raw.replace(/```json|```/g, "").trim();
+            const res = JSON.parse(clean);
             
             const i = dadesClasse.findIndex(a => a.nom === alumne);
-            if (i !== -1) {
-                dadesClasse[i].nota = res.nota;
-                dadesClasse[i].feedback = res.feedback;
-            }
+            if (i !== -1) { dadesClasse[i].nota = res.nota; dadesClasse[i].feedback = res.feedback; }
             
-            log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
-            alert(`Corregit!\nNota: ${res.nota}`);
+            log(`✅ NOTA: ${res.nota}`);
+            alert(`Nota: ${res.nota}`);
         } else {
-            // Si arribem aquí, Google ha bloquejat la resposta (Safety)
-            log("❌ Resposta bloquejada per Google. Revisa que les fotos no tinguin contingut 'sensible' o noms massa estranys.");
-            console.log("Resposta completa:", result);
+            log("❌ Google ha tornat una resposta buida.");
+            console.log(result);
         }
-
     } catch (err) {
-        log(`❌ Error tècnic: ${err.message}`);
+        log(`❌ Error de codi: ${err.message}`);
     } finally {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
