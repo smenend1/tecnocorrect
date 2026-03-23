@@ -12,14 +12,14 @@ const log = (m) => {
     if (d) { d.innerHTML += `<br>> ${m}`; d.scrollTop = d.scrollHeight; }
 };
 
-// BOTÓ ESBORRAR
+// BOTÓ ESBORRAR (RECORDA: Ara recarrega la pàgina!)
 document.getElementById('btnClearMemory').onclick = () => {
     localStorage.clear();
-    alert("Memòria neta.");
+    alert("Memòria neta. Recarregant...");
     location.reload();
 };
 
-// COMPRESSOR
+// COMPRESSOR 
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -75,10 +75,7 @@ document.getElementById('masterSolution').onchange = async (e) => {
     log("✅ Solucionari guardat.");
 };
 
-// 3. FOTOS ALUMNE
-document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos a punt.`);
-
-// 4. MOTOR DE CORRECCIÓ AMB AUTO-RETRY
+// 4. CORRECCIÓ AMB INTENTS MÚLTIPLES
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
@@ -88,18 +85,18 @@ document.getElementById('btnCorrect').onclick = async () => {
     const btn = document.getElementById('btnCorrect');
     btn.innerText = "⏳..."; btn.disabled = true;
 
-    // LLISTA DE MODELS A PROVAR PER ORDRE
+    // Llista de noms possibles que Google pot acceptar
     const modelsAProvar = [
         "gemini-1.5-flash",
         "gemini-1.5-flash-8b",
-        "gemini-pro-vision"
+        "gemini-1.5-pro"
     ];
 
     const alumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
     const payload = {
         contents: [{
             parts: [
-                { text: `Corregeix l'examen de "${alumne}". Respon només JSON pur: {"nota": X, "feedback": "..."}` },
+                { text: `Corregeix l'examen de "${alumne}". Respon només JSON pur: {"nota": X.X, "feedback": "..."}` },
                 { inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } },
                 { inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } },
                 ...alumneB64.map(img => ({ inline_data: { mime_type: "image/jpeg", data: img } }))
@@ -114,38 +111,39 @@ document.getElementById('btnCorrect').onclick = async () => {
         log(`🚀 Provant model: ${model}...`);
         
         try {
+            // Intentem amb la versió v1 (estable)
             const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${API_KEY}`;
-            const response = await fetch(url, {
+            const resp = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 
-            const result = await response.json();
+            const data = await resp.json();
 
-            if (result.error) {
-                log(`⚠️ ${model} no ha funcionat.`);
-                continue; // Prova el següent model
+            if (data.error) {
+                log(`⚠️ ${model} no disponible.`);
+                continue; 
             }
 
-            if (result.candidates && result.candidates[0]) {
-                let raw = result.candidates[0].content.parts[0].text;
-                let clean = raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
+            if (data.candidates && data.candidates[0]) {
+                let text = data.candidates[0].content.parts[0].text;
+                let clean = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
                 const res = JSON.parse(clean);
                 
                 const i = dadesClasse.findIndex(a => a.nom === alumne);
                 if (i !== -1) { dadesClasse[i].nota = res.nota; dadesClasse[i].feedback = res.feedback; }
                 
                 log(`✅ ÈXIT AMB ${model}! Nota: ${res.nota}`);
-                alert(`Nota: ${res.nota}`);
+                alert(`Corregit: ${res.nota}`);
                 exit = true;
             }
-        } catch (err) {
-            log(`❌ Error amb ${model}.`);
+        } catch (e) {
+            log(`❌ Error tècnic amb ${model}.`);
         }
     }
 
-    if (!exit) log("❌ Cap model ha funcionat. Revisa la teva API KEY.");
+    if (!exit) log("❌ Cap model ha funcionat. Revisa la teva API KEY a Google AI Studio.");
     btn.innerText = "Corregir amb IA"; btn.disabled = false;
 };
 
@@ -153,5 +151,5 @@ document.getElementById('btnExport').onclick = () => {
     const ws = XLSX.utils.json_to_sheet(dadesClasse);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Notes");
-    XLSX.writeFile(wb, "Notes_Tecno.xlsx");
+    XLSX.writeFile(wb, "Notes.xlsx");
 };
