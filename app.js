@@ -16,11 +16,11 @@ function log(m) {
 // BOTÓ ESBORRAR
 document.getElementById('btnClearMemory').onclick = function() {
     localStorage.clear();
-    log("🗑️ Memòria neta. Recarregant...");
+    log("🗑️ Memòria esborrada. Recarregant...");
     setTimeout(() => location.reload(), 500);
 };
 
-// COMPRESSOR ESTÀNDARD
+// COMPRESSOR - Mida fixa de 800px per evitar errors de quota
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -40,7 +40,7 @@ async function optimitzarImatge(file) {
     });
 }
 
-// 1. CSV
+// 1. LECTURA CSV
 document.getElementById('csvFile').onchange = function(e) {
     const reader = new FileReader();
     reader.onload = function(event) {
@@ -56,19 +56,21 @@ document.getElementById('csvFile').onchange = function(e) {
                 select.appendChild(opt);
             }
         });
-        log(`📊 ${dadesClasse.length} alumnes a punt.`);
+        log(`📊 ${dadesClasse.length} alumnes carregats.`);
     };
     reader.readAsText(e.target.files[0]);
 };
 
 // 2. PROFESSOR
 document.getElementById('masterBlank').onchange = async (e) => {
+    log("Processant examen...");
     examenNetPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
     localStorage.setItem('masterBlankArray', JSON.stringify(examenNetPages));
     log("✅ Examen guardat.");
 };
 
 document.getElementById('masterSolution').onchange = async (e) => {
+    log("Processant solucionari...");
     solucionariPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
     localStorage.setItem('masterSolutionArray', JSON.stringify(solucionariPages));
     log("✅ Solucionari guardat.");
@@ -76,28 +78,28 @@ document.getElementById('masterSolution').onchange = async (e) => {
 
 // 3. FOTOS ALUMNE
 document.getElementById('examPhotos').onchange = (e) => {
-    log(`${e.target.files.length} fotos alumne seleccionades.`);
+    log(`${e.target.files.length} fotos alumne llistes.`);
 };
 
-// 4. CORRECCIÓ (MINIMALISTA)
+// 4. CORRECCIÓ
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
 
-    if (!examenNetPages.length || !solucionariPages.length) return alert("Puja referències.");
-    
+    if (!examenNetPages.length || !solucionariPages.length) return alert("Puja primer l'examen i el solucionari.");
+    if (!files.length) return alert("Selecciona fotos de l'alumne.");
+
     const btn = document.getElementById('btnCorrect');
-    btn.innerText = "⏳..."; btn.disabled = true;
-    log(`🚀 Corregint ${alumne}...`);
+    btn.innerText = "⏳ Corregint..."; btn.disabled = true;
+    log(`🚀 Enviant petició a Google...`);
 
     try {
         const alumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
         
-        // CONSTRUCCIÓ DEL COS DE LA PETICIÓ (Simplificat al màxim)
         const payload = {
             contents: [{
                 parts: [
-                    { text: `Corregeix l'examen de l'alumne "${alumne}". Compara enunciats i solucionari amb les fotos de l'alumne. Respon només JSON: {"nota":0, "feedback":""}` },
+                    { text: `Corregeix l'examen de "${alumne}". Compara enunciats i solucionari amb les fotos de l'alumne. Respon EXCLUSIVAMENT amb aquest format JSON pur: {"nota": 5.5, "feedback": "comentari"}. No diguis res més.` },
                     { inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } },
                     { inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } },
                     ...alumneB64.map(img => ({ inline_data: { mime_type: "image/jpeg", data: img } }))
@@ -113,27 +115,34 @@ document.getElementById('btnCorrect').onclick = async () => {
 
         const result = await response.json();
 
-        // LOG PER VEURE L'ERROR REAL SI NO HI HA RESPOSTA
+        // Si Google dona error de quota o clau
         if (result.error) {
-            log(`❌ ERROR GOOGLE: ${result.error.message} (Codi: ${result.error.code})`);
+            log(`❌ ERROR API: ${result.error.message}`);
             return;
         }
 
-        if (result.candidates && result.candidates[0]) {
-            let text = result.candidates[0].content.parts[0].text;
-            let clean = text.replace(/```json|```/g, "").trim();
-            const json = JSON.parse(clean);
+        if (result.candidates && result.candidates[0] && result.candidates[0].content) {
+            let rawText = result.candidates[0].content.parts[0].text;
             
-            const idx = dadesClasse.findIndex(a => a.nom === alumne);
-            if (idx !== -1) { dadesClasse[idx].nota = json.nota; dadesClasse[idx].feedback = json.feedback; }
+            // Neteja agressiva de JSON (per si la IA posa ```json)
+            let cleanJSON = rawText.replace(/```json|```/g, "").trim();
+            const res = JSON.parse(cleanJSON);
             
-            log(`✅ NOTA: ${json.nota}`);
-            alert(`Alumne: ${alumne}\nNota: ${json.nota}`);
+            const i = dadesClasse.findIndex(a => a.nom === alumne);
+            if (i !== -1) {
+                dadesClasse[i].nota = res.nota;
+                dadesClasse[i].feedback = res.feedback;
+            }
+            
+            log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
+            alert(`Corregit!\nAlumne: ${alumne}\nNota: ${res.nota}`);
         } else {
-            log("❌ Resposta buida. Revisa la Clau API.");
+            log("❌ Resposta inesperada. Prova amb una foto més clara de l'alumne.");
+            console.log("Resposta de Google:", result);
         }
+
     } catch (err) {
-        log(`❌ ERROR: ${err.message}`);
+        log(`❌ Error crític: ${err.message}`);
     } finally {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
@@ -143,5 +152,5 @@ document.getElementById('btnExport').onclick = () => {
     const ws = XLSX.utils.json_to_sheet(dadesClasse);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Notes");
-    XLSX.writeFile(wb, "Notes.xlsx");
+    XLSX.writeFile(wb, "Notes_Tecno.xlsx");
 };
