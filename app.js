@@ -2,8 +2,8 @@
 // CONFIGURACIÓ - POSA LA TEVA CLAU AQUÍ
 // ==========================================
 const API_KEY = "AIzaSyDoRTmlZe3JP6kjcrpNMTYvhNB-LUj8odo"; 
-// Canviem a gemini-1.5-flash-latest per evitar l'error de "model not found"
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${API_KEY}`;
+// URL CORREGIDA: Utilitzem gemini-1.5-flash (nom estàndard)
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
 let examenNetPages = JSON.parse(localStorage.getItem('masterBlankArray')) || [];
@@ -78,10 +78,10 @@ document.getElementById('masterSolution').onchange = async (e) => {
     log("✅ Solucionari guardat.");
 };
 
-// 3. ALUMNE
+// 3. FOTOS ALUMNE
 document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos alumne llistes.`);
 
-// 4. CORRECCIÓ (V2.4 - MODEL CORREGIT)
+// 4. CORRECCIÓ
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
@@ -119,7 +119,8 @@ document.getElementById('btnCorrect').onclick = async () => {
             log(`❌ ERROR GOOGLE: ${result.error.message}`);
         } else if (result.candidates && result.candidates[0]) {
             let rawText = result.candidates[0].content.parts[0].text;
-            let cleanJSON = rawText.replace(/```json|```/g, "").trim();
+            // Neteja per si la IA torna text fora del JSON
+            let cleanJSON = rawText.substring(rawText.indexOf('{'), rawText.lastIndexOf('}') + 1);
             const res = JSON.parse(cleanJSON);
             
             const i = dadesClasse.findIndex(a => a.nom === alumne);
@@ -131,7 +132,7 @@ document.getElementById('btnCorrect').onclick = async () => {
             log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
             alert(`Corregit!\nNota: ${res.nota}`);
         } else {
-            log("❌ Resposta buida. Revisa les fotos.");
+            log("❌ Resposta buida de l'IA.");
         }
     } catch (err) {
         log(`❌ Error: ${err.message}`);
