@@ -1,9 +1,9 @@
 // ==========================================
-// CONFIGURACIÓ SEGURA (V3.2 - VERSIÓ ESTABLE)
+// CONFIGURACIÓ SEGURA (V3.3)
 // ==========================================
 let API_KEY = localStorage.getItem('mi_gemini_key');
 
-// Si no tenim la clau guardada, la demanem per prompt
+// Si no tenim la clau guardada, la demanem
 if (!API_KEY || API_KEY === "null") {
     API_KEY = prompt("🔑 Enganxa la teva NOVA API KEY (AIza...):");
     if (API_KEY) {
@@ -11,7 +11,6 @@ if (!API_KEY || API_KEY === "null") {
     }
 }
 
-// URL FORÇADA A VERSIÓ ESTABLE v1 (Més compatible a Europa)
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
@@ -23,16 +22,16 @@ const log = (m) => {
     if (d) { d.innerHTML += `<br>> ${m}`; d.scrollTop = d.scrollHeight; }
 };
 
-// BOTÓ PER REINICIAR CONFIGURACIÓ
+// BOTÓ PER REINICIAR
 document.getElementById('btnClearMemory').onclick = () => {
-    if(confirm("Vols esborrar la memòria i la Clau API per posar-ne una de nova?")) {
+    if(confirm("Vols esborrar la memòria i la Clau API?")) {
         localStorage.clear();
-        alert("Memòria neta. La pàgina es recarregarà.");
+        alert("Memòria neta. Recarregant...");
         location.reload();
     }
 };
 
-// COMPRESSOR D'IMATGES (800px / 0.5 qualitat)
+// COMPRESSOR D'IMATGES
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -53,7 +52,7 @@ async function optimitzarImatge(file) {
     });
 }
 
-// 1. CARREGAR CSV ALUMNES
+// 1. CARREGAR CSV
 document.getElementById('csvFile').onchange = (e) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -74,7 +73,7 @@ document.getElementById('csvFile').onchange = (e) => {
     reader.readAsText(e.target.files[0]);
 };
 
-// 2. PROFESSOR: EXAMEN I SOLUCIONARI
+// 2. PROFESSOR
 document.getElementById('masterBlank').onchange = async (e) => {
     log("Processant examen...");
     examenNetPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
@@ -92,17 +91,16 @@ document.getElementById('masterSolution').onchange = async (e) => {
 // 3. FOTOS ALUMNE
 document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos a punt.`);
 
-// 4. CORRECCIÓ AMB GEMINI v1
+// 4. CORRECCIÓ
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
 
-    if (!examenNetPages.length || !solucionariPages.length) return alert("Falten referències (Pas 0).");
-    if (!files.length) return alert("Selecciona la foto de l'alumne.");
-    if (!API_KEY) return alert("Falta la Clau API.");
+    if (!examenNetPages.length || !solucionariPages.length) return alert("Falten referències.");
+    if (!files.length) return alert("Puja la foto de l'alumne.");
     
     const btn = document.getElementById('btnCorrect');
-    btn.innerText = "⏳ Corregint..."; btn.disabled = true;
+    btn.innerText = "⏳..."; btn.disabled = true;
     log(`🚀 Enviant a Gemini v1: ${alumne}`);
 
     try {
@@ -111,7 +109,7 @@ document.getElementById('btnCorrect').onclick = async () => {
         const payload = {
             contents: [{
                 parts: [
-                    { text: `Ets un professor. Corregeix l'examen de "${alumne}". Compara enunciats i solucionari amb la resposta de l'alumne. Respon només JSON pur: {"nota": X.X, "feedback": "..."}` },
+                    { text: `Corregeix l'examen de "${alumne}". Respon només JSON: {"nota": X.X, "feedback": "..."}` },
                     { inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } },
                     { inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } },
                     ...alumneB64.map(img => ({ inline_data: { mime_type: "image/jpeg", data: img } }))
@@ -128,10 +126,36 @@ document.getElementById('btnCorrect').onclick = async () => {
         const result = await response.json();
 
         if (result.error) {
-            log(`❌ ERROR GOOGLE: ${result.error.message}`);
-            if (result.error.message.includes("location")) {
-                log("👉 Error de regió (UE). Prova d'activar una VPN (USA).");
-            }
+            log(`❌ ERROR: ${result.error.message}`);
         } else if (result.candidates && result.candidates[0]) {
             let rawText = result.candidates[0].content.parts[0].text;
             let start = rawText.indexOf('{');
+            let end = rawText.lastIndexOf('}') + 1;
+            let cleanJSON = rawText.substring(start, end);
+            const res = JSON.parse(cleanJSON);
+            
+            const i = dadesClasse.findIndex(a => a.nom === alumne);
+            if (i !== -1) {
+                dadesClasse[i].nota = res.nota;
+                dadesClasse[i].feedback = res.feedback;
+            }
+            log(`✅ NOTA: ${res.nota}`);
+            alert(`Nota: ${res.nota}`);
+        }
+    } catch (err) {
+        log(`❌ Error: ${err.message}`);
+    } finally {
+        btn.innerText = "Corregir amb IA"; btn.disabled = false;
+    }
+};
+
+// 5. EXPORTAR EXCEL
+document.getElementById('btnExport').onclick = () => {
+    const ws = XLSX.utils.json_to_sheet(dadesClasse);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Notes");
+    XLSX.writeFile(wb, "Notes_Tecno.xlsx");
+};
+
+// Log inicial per confirmar que el fitxer s'ha carregat sencer
+log("Sistema a punt...");
