@@ -1,17 +1,18 @@
 // ==========================================
-// CONFIGURACIÓ SEGURA (SENSE CLAU EXPOSADA)
+// CONFIGURACIÓ SEGURA (V3.2 - VERSIÓ ESTABLE)
 // ==========================================
 let API_KEY = localStorage.getItem('mi_gemini_key');
 
-// Si no tenim la clau guardada al navegador, la demanem
+// Si no tenim la clau guardada, la demanem per prompt
 if (!API_KEY || API_KEY === "null") {
-    API_KEY = prompt("🔑 Enganxa aquí la teva NOVA API KEY de Gemini:\n(Això només ho has de fer un cop)");
+    API_KEY = prompt("🔑 Enganxa la teva NOVA API KEY (AIza...):");
     if (API_KEY) {
         localStorage.setItem('mi_gemini_key', API_KEY);
     }
 }
 
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+// URL FORÇADA A VERSIÓ ESTABLE v1 (Més compatible a Europa)
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
 let examenNetPages = JSON.parse(localStorage.getItem('masterBlankArray')) || [];
@@ -22,16 +23,16 @@ const log = (m) => {
     if (d) { d.innerHTML += `<br>> ${m}`; d.scrollTop = d.scrollHeight; }
 };
 
-// BOTÓ PER NETEJAR-HO TOT (Incloent la Clau si t'has equivocat)
+// BOTÓ PER REINICIAR CONFIGURACIÓ
 document.getElementById('btnClearMemory').onclick = () => {
-    if(confirm("Vols esborrar tota la memòria i la Clau API?")) {
+    if(confirm("Vols esborrar la memòria i la Clau API per posar-ne una de nova?")) {
         localStorage.clear();
         alert("Memòria neta. La pàgina es recarregarà.");
         location.reload();
     }
 };
 
-// COMPRESSOR D'IMATGES
+// COMPRESSOR D'IMATGES (800px / 0.5 qualitat)
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -52,7 +53,7 @@ async function optimitzarImatge(file) {
     });
 }
 
-// 1. CARREGAR LLISTAT D'ALUMNES (CSV)
+// 1. CARREGAR CSV ALUMNES
 document.getElementById('csvFile').onchange = (e) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -73,7 +74,7 @@ document.getElementById('csvFile').onchange = (e) => {
     reader.readAsText(e.target.files[0]);
 };
 
-// 2. GUARDAR EXAMEN I SOLUCIONARI
+// 2. PROFESSOR: EXAMEN I SOLUCIONARI
 document.getElementById('masterBlank').onchange = async (e) => {
     log("Processant examen...");
     examenNetPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
@@ -88,21 +89,21 @@ document.getElementById('masterSolution').onchange = async (e) => {
     log("✅ Solucionari guardat.");
 };
 
-// 3. SELECCIÓ FOTOS ALUMNE
-document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos llestes.`);
+// 3. FOTOS ALUMNE
+document.getElementById('examPhotos').onchange = (e) => log(`${e.target.files.length} fotos a punt.`);
 
-// 4. CORRECCIÓ AMB GEMINI
+// 4. CORRECCIÓ AMB GEMINI v1
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
 
     if (!examenNetPages.length || !solucionariPages.length) return alert("Falten referències (Pas 0).");
-    if (!files.length) return alert("Selecciona la foto de l'examen de l'alumne.");
-    if (!API_KEY) return alert("Falta la Clau API. Recarrega la pàgina.");
+    if (!files.length) return alert("Selecciona la foto de l'alumne.");
+    if (!API_KEY) return alert("Falta la Clau API.");
     
     const btn = document.getElementById('btnCorrect');
     btn.innerText = "⏳ Corregint..."; btn.disabled = true;
-    log(`🚀 Corregint a ${alumne}...`);
+    log(`🚀 Enviant a Gemini v1: ${alumne}`);
 
     try {
         const alumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
@@ -110,7 +111,7 @@ document.getElementById('btnCorrect').onclick = async () => {
         const payload = {
             contents: [{
                 parts: [
-                    { text: `Ets un professor de tecnologia. Corregeix l'examen de "${alumne}". Compara l'examen buit i el solucionari amb les fotos de l'alumne. Respon EXCLUSIVAMENT amb aquest format JSON pur: {"nota": X.X, "feedback": "..."}` },
+                    { text: `Ets un professor. Corregeix l'examen de "${alumne}". Compara enunciats i solucionari amb la resposta de l'alumne. Respon només JSON pur: {"nota": X.X, "feedback": "..."}` },
                     { inline_data: { mime_type: "image/jpeg", data: examenNetPages[0] } },
                     { inline_data: { mime_type: "image/jpeg", data: solucionariPages[0] } },
                     ...alumneB64.map(img => ({ inline_data: { mime_type: "image/jpeg", data: img } }))
@@ -128,36 +129,9 @@ document.getElementById('btnCorrect').onclick = async () => {
 
         if (result.error) {
             log(`❌ ERROR GOOGLE: ${result.error.message}`);
-            if(result.error.message.includes("API key")) {
-                localStorage.removeItem('mi_gemini_key');
-                log("👉 Clau incorrecta. Recarrega per posar-ne una de bona.");
+            if (result.error.message.includes("location")) {
+                log("👉 Error de regió (UE). Prova d'activar una VPN (USA).");
             }
         } else if (result.candidates && result.candidates[0]) {
             let rawText = result.candidates[0].content.parts[0].text;
             let start = rawText.indexOf('{');
-            let end = rawText.lastIndexOf('}') + 1;
-            let cleanJSON = rawText.substring(start, end);
-            const res = JSON.parse(cleanJSON);
-            
-            const i = dadesClasse.findIndex(a => a.nom === alumne);
-            if (i !== -1) {
-                dadesClasse[i].nota = res.nota;
-                dadesClasse[i].feedback = res.feedback;
-            }
-            log(`✅ ÈXIT: ${alumne} -> Nota: ${res.nota}`);
-            alert(`Corregit!\nNota: ${res.nota}`);
-        }
-    } catch (err) {
-        log(`❌ Error: ${err.message}`);
-    } finally {
-        btn.innerText = "Corregir amb IA"; btn.disabled = false;
-    }
-};
-
-// 5. EXPORTAR A EXCEL
-document.getElementById('btnExport').onclick = () => {
-    const ws = XLSX.utils.json_to_sheet(dadesClasse);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Notes");
-    XLSX.writeFile(wb, "Notes_Tecno_Corregides.xlsx");
-};
