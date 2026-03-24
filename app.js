@@ -1,9 +1,8 @@
 // ==========================================
-// CONFIGURACIÓ SEGURA v3.6
+// CONFIGURACIÓ SEGURA v3.7 (SOLUCIÓ v1BETA)
 // ==========================================
 let API_KEY = localStorage.getItem('mi_gemini_key');
 
-// Si no tenim la clau guardada, la demanem
 if (!API_KEY || API_KEY === "null") {
     API_KEY = prompt("🔑 Enganxa la teva NOVA API KEY de Gemini (AIza...):");
     if (API_KEY) {
@@ -11,7 +10,7 @@ if (!API_KEY || API_KEY === "null") {
     }
 }
 
-// CANVI CLAU: Utilitzem v1beta i el nom complet del model
+// CANVI DEFINITIU DE RUTA: v1beta és la més flexible per a Europa
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
 let dadesClasse = [];
@@ -27,22 +26,19 @@ const log = (m) => {
     console.log(m);
 };
 
-// --- LOGICIAL INICIAL ---
 window.onload = () => {
-    log("🚀 TecnoCorrect v1.9 Iniciat");
-    if (examenNetPages.length > 0) log("📁 Examen recuperat de memòria.");
-    if (solucionariPages.length > 0) log("📁 Solucionari recuperat de memòria.");
+    log("🚀 TecnoCorrect v1.9 Iniciat (v1beta)");
+    if (examenNetPages.length > 0) log("📁 Memòria: Examen carregat.");
+    if (solucionariPages.length > 0) log("📁 Memòria: Solucionari carregat.");
 };
 
-// BOTÓ REINICIAR
 document.getElementById('btnClearMemory').onclick = () => {
-    if(confirm("Vols esborrar-ho tot (inclosa la clau API)?")) {
+    if(confirm("Vols esborrar-ho tot (inclosa la clau)?")) {
         localStorage.clear();
         location.reload();
     }
 };
 
-// COMPRESSOR D'IMATGES
 async function optimitzarImatge(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -63,7 +59,6 @@ async function optimitzarImatge(file) {
     });
 }
 
-// 1. CARREGAR CSV
 document.getElementById('csvFile').onchange = (e) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -84,7 +79,6 @@ document.getElementById('csvFile').onchange = (e) => {
     reader.readAsText(e.target.files[0]);
 };
 
-// 2. PROFESSOR
 document.getElementById('masterBlank').onchange = async (e) => {
     log("Processant examen...");
     examenNetPages = await Promise.all(Array.from(e.target.files).map(f => optimitzarImatge(f)));
@@ -99,22 +93,18 @@ document.getElementById('masterSolution').onchange = async (e) => {
     log("✅ Solucionari guardat.");
 };
 
-// 3. FOTOS ALUMNE
 document.getElementById('examPhotos').onchange = (e) => log(`📸 ${e.target.files.length} fotos llistes.`);
 
-// 4. CORRECCIÓ
 document.getElementById('btnCorrect').onclick = async () => {
     const alumne = document.getElementById('alumneSelect').value;
     const files = document.getElementById('examPhotos').files;
 
-    if (!examenNetPages.length || !solucionariPages.length) {
-        alert("Siusplau, puja l'examen i el solucionari.");
-        return;
-    }
+    if (!examenNetPages.length || !solucionariPages.length) return alert("Puja examen i solucionari.");
+    if (!files.length) return alert("Puja la foto de l'alumne.");
     
     const btn = document.getElementById('btnCorrect');
     btn.innerText = "⏳ Corregint..."; btn.disabled = true;
-    log(`📡 Connectant amb Gemini (v1beta)...`);
+    log(`📡 Connectant amb Gemini v1beta...`);
 
     try {
         const alumneB64 = await Promise.all(Array.from(files).map(f => optimitzarImatge(f)));
@@ -139,8 +129,9 @@ document.getElementById('btnCorrect').onclick = async () => {
 
         if (result.error) {
             log(`❌ ERROR GOOGLE: ${result.error.message}`);
-            if (result.error.message.includes("location")) {
-                log("👉 Error de regió (Europa). NECESSITES UNA VPN A USA.");
+            if (result.error.message.includes("API key")) {
+                localStorage.removeItem('mi_gemini_key');
+                log("⚠️ Clau invàlida. Recarrega la pàgina.");
             }
         } else if (result.candidates && result.candidates[0]) {
             let rawText = result.candidates[0].content.parts[0].text;
@@ -150,19 +141,18 @@ document.getElementById('btnCorrect').onclick = async () => {
             
             const i = dadesClasse.findIndex(a => a.nom === alumne);
             if (i !== -1) { dadesClasse[i].nota = res.nota; dadesClasse[i].feedback = res.feedback; }
-            log(`✅ NOTA REBUDA: ${res.nota}`);
+            log(`✅ NOTA: ${res.nota}`);
             alert(`Alumne: ${alumne}\nNota: ${res.nota}`);
         }
     } catch (err) {
-        log(`❌ ERROR CRÍTIC: ${err.message}`);
+        log(`❌ ERROR: ${err.message}`);
     } finally {
         btn.innerText = "Corregir amb IA"; btn.disabled = false;
     }
 };
 
-// 5. EXPORTAR EXCEL
 document.getElementById('btnExport').onclick = () => {
-    if (dadesClasse.length === 0) return alert("No hi ha dades.");
+    if (!dadesClasse.length) return alert("No hi ha dades.");
     const ws = XLSX.utils.json_to_sheet(dadesClasse);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Notes");
